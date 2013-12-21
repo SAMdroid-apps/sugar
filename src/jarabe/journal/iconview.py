@@ -20,27 +20,102 @@ from gettext import gettext as _
 
 from gi.repository import GObject
 from gi.repository import Gtk
+from gi.repository import Gdk
 from gi.repository import GLib
+from gi.repository import GConf
 
+from sugar3 import util
+from sugar3.graphics.icon import Icon, CellRendererIcon
 from jarabe.journal.iconmodel import IconModel
-from sugar3.graphics.icon import Icon
+from jarabe.journal.palettes import ObjectPalette
+from sugar3.graphics.xocolor import XoColor
 from jarabe.journal import model
 from sugar3.graphics.objectchooser import get_preview_pixbuf
 from sugar3.graphics import style
 from sugar3.activity.activity import PREVIEW_SIZE
 
+class CellRendererFavorite(CellRendererIcon):
+    __gtype_name__ = 'JournalCellRendererFavoriteA'
+
+    def __init__(self, tree_view=None):
+        CellRendererIcon.__init__(self, tree_view)
+
+        self.props.width = style.GRID_CELL_SIZE
+        self.props.height = style.GRID_CELL_SIZE
+        self.props.size = style.SMALL_ICON_SIZE
+        self.props.icon_name = 'emblem-favorite'
+        client = GConf.Client.get_default()
+        prelit_color = XoColor(client.get_string('/desktop/sugar/user/color'))
+        self.props.prelit_stroke_color = prelit_color.get_stroke_color()
+        self.props.prelit_fill_color = prelit_color.get_fill_color()
 
 class PreviewRenderer(Gtk.CellRendererPixbuf):
 
-    def __init__(self, **kwds):
+    __gsignals__ = {
+        'detail-clicked': (GObject.SignalFlags.RUN_FIRST, None,
+                           ([str])),
+        'volume-error': (GObject.SignalFlags.RUN_FIRST, None,
+                         ([str, str])),
+    }
+
+    def __init__(self, tree_view, journal_activity, **kwds):
+        from sugar3.graphics.palette import CellRendererInvoker
+    
+        self._journalactivity = journal_activity
+        self._show_palette = True
+        self.tree_view = tree_view
         Gtk.CellRendererPixbuf.__init__(self, **kwds)
         self._preview_data = None
+        self._is_fav = False
+        #self.props.mode = Gtk.CellRendererMode.ACTIVATABLE
+        
+        self._palette_invoker = CellRendererInvoker()
+        self._palette_invoker.attach_cell_renderer(tree_view, self)
 
-    def set_preview_data(self, data):
+    def set_preview_data(self, data, isFav):
         self._preview_data = data
+        self._is_fav = isFav
+        
+    def set_show_palette(self, show_palette):
+        self._show_palette = show_palette
+
+    show_palette = GObject.property(type=bool, default=True,
+                                    setter=set_show_palette)
+        
+    def create_palette(self):
+        if not self._show_palette:
+              return None
+
+        tree_model = self.tree_view.get_model()
+        display = Gdk.Display.get_default()
+        manager = display.get_device_manager()
+        pointer_device = manager.get_client_pointer()
+        screen, x, y = pointer_device.get_position()
+        path = self.tree_view.get_path_at_pos(x, y)
+        logging.error(str(x) + "       " + str(y))
+        metadata = tree_model.get_metadata(path)
+
+        palette = ObjectPalette(self._journalactivity, metadata, detail=True)
+        palette.connect('detail-clicked',
+                        self.__detail_clicked_cb)
+        palette.connect('volume-error',
+                        self.__volume_error_cb)
+        return palette
+        
+    def get_palette_invoker(self):
+        return self._palette_invoker
+
+    palette_invoker = GObject.property(type=object, getter=get_palette_invoker)
+
+    def __detail_clicked_cb(self, palette, uid):
+        self.emit('detail-clicked', uid)
+
+    def __volume_error_cb(self, palette, message, severity):
+        self.emit('volume-error', message, severity)
 
     def do_render(self, cr, widget, background_area, cell_area, flags):
-        self.props.pixbuf = get_preview_pixbuf(self._preview_data)
+        self.props.pixbuf = get_preview_pixbuf(self._preview_data,
+                                               isFav=self._is_fav)
         Gtk.CellRendererPixbuf.do_render(self, cr, widget, background_area,
                                          cell_area, flags)
 
@@ -54,33 +129,66 @@ class PreviewRenderer(Gtk.CellRendererPixbuf):
 
 class PreviewIconView(Gtk.IconView):
 
-    def __init__(self, title_col, preview_col):
+    __gsignals__ = {
+        'detail-clicked': (GObject.SignalFlags.RUN_FIRST, None,
+                           ([str])),
+        'volume-error': (GObject.SignalFlags.RUN_FIRST, None,
+                         ([str, str])),
+    }
+
+    def __init__(self, title_col, time_col, preview_col, fav_col, jouranl_a=None):
         Gtk.IconView.__init__(self)
 
         self._preview_col = preview_col
+        self._time_col = time_col
         self._title_col = title_col
+        self._fav_col = fav_col
 
         self.set_spacing(3)
 
-        _preview_renderer = PreviewRenderer()
+        _preview_renderer = PreviewRenderer(self, jouranl_a)
         _preview_renderer.set_alignment(0.5, 0.5)
         self.pack_start(_preview_renderer, False)
         self.set_cell_data_func(_preview_renderer,
                                 self._preview_data_func, None)
+        _preview_renderer.connect('detail-clicked', self._detail_clicked_cb)
+        _preview_renderer.connect('volume-error', self._volume_error_cb)
+        
 
         _title_renderer = Gtk.CellRendererText()
         _title_renderer.set_alignment(0.5, 0.5)
         self.pack_start(_title_renderer, True)
         self.set_cell_data_func(_title_renderer,
                                 self._title_data_func, None)
+                                
+        _time_renderer = Gtk.CellRendererText()
+        _time_renderer.set_alignment(0.5, 0.5)
+        self.pack_start(_time_renderer, True)
+        self.set_cell_data_func(_time_renderer,
+                                self._time_data_func, None)
+                                
+    def _detail_clicked_cb(self, cell, uid):
+        logging.error(str(cell) + "     " + str(uid))
+        self.emit('detail-clicked', uid)
+        
+    def _volume_error_cb(self, palette, message, severity):
+        self.emit('volume-error', message, severity)
 
     def _preview_data_func(self, view, cell, store, i, data):
+        favorite = store.get_value(i, self._fav_col)
         preview_data = store.get_value(i, self._preview_col)
-        cell.set_preview_data(preview_data)
+        cell.set_preview_data(preview_data, favorite)
 
     def _title_data_func(self, view, cell, store, i, data):
         title = store.get_value(i, self._title_col)
         cell.props.markup = title
+        
+    def _time_data_func(self, view, cell, store, i, data):
+        time = store.get_value(i, self._time_col)
+        cell.props.markup = time
+        
+    def get_bin_window(self):
+        return self.get_window()
 
 
 class IconView(Gtk.Bin):
@@ -90,11 +198,16 @@ class IconView(Gtk.Bin):
         'clear-clicked': (GObject.SignalFlags.RUN_FIRST, None, ([])),
         'entry-activated': (GObject.SignalFlags.RUN_FIRST,
                             None, ([str])),
+        'detail-clicked': (GObject.SignalFlags.RUN_FIRST, None,
+                           ([str])),
+        'volume-error': (GObject.SignalFlags.RUN_FIRST, None,
+                         ([str, str])),
     }
 
-    def __init__(self):
+    def __init__(self, journal_activity=None, tree_view=None):
         self._query = {}
         self._model = None
+        self._journalactivity = journal_activity
         self._progress_bar = None
         self._last_progress_bar_pulse = None
         self._scroll_position = 0.
@@ -112,11 +225,20 @@ class IconView(Gtk.Bin):
         self._scrolled_window.show()
 
         self.icon_view = PreviewIconView(IconModel.COLUMN_TITLE,
-                                         IconModel.COLUMN_PREVIEW)
+                                         IconModel.COLUMN_TIME,
+                                         IconModel.COLUMN_PREVIEW,
+                                         IconModel.COLUMN_IS_FAV,
+                                         journal_activity)
         self.icon_view.connect('item-activated', self.__item_activated_cb)
+        self.icon_view.connect('detail-clicked', self._detail_clicked_cb)
+        self.icon_view.connect('volume-error', self._volume_error_cb)
 
         self.icon_view.connect('button-release-event',
                                self.__button_release_event_cb)
+        self.icon_view.enable_model_drag_source(Gdk.ModifierType.BUTTON1_MASK,
+                                [Gtk.TargetEntry.new('text/uri-list', 0, 0),
+                                Gtk.TargetEntry.new('journal-object-id', 0, 0)],
+                                                Gdk.DragAction.COPY)
 
         self._scrolled_window.add(self.icon_view)
         self.icon_view.show()
@@ -130,16 +252,24 @@ class IconView(Gtk.Bin):
         model.updated.connect(self.__model_updated_cb)
         model.deleted.connect(self.__model_deleted_cb)
 
+    def _detail_clicked_cb(self, cell, uid):
+        self.emit('entry-activated', uid)
+        
+    def _volume_error_cb(self, palette, message, severity):
+        self.emit('volume-error', message, severity)
+
     def __button_release_event_cb(self, icon_view, event):
         path = icon_view.get_path_at_pos(int(event.x), int(event.y))
         if path is None:
             return False
         uid = icon_view.get_model()[path][IconModel.COLUMN_UID]
+        metadata = icon_view.get_model().get_metadata(path)
         self.emit('entry-activated', uid)
         return False
 
     def __item_activated_cb(self, icon_view, path):
         uid = icon_view.get_model()[path][IconModel.COLUMN_UID]
+        metadata = icon_view.get_model().get_metadata(path)
         self.emit('entry-activated', uid)
 
     def _thumb_data_func(self, view, cell, store, i, data):

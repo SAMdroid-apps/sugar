@@ -24,6 +24,7 @@ from gi.repository import Gdk
 from gi.repository import GdkX11
 import dbus
 import statvfs
+import copy
 import os
 
 from sugar3.graphics.alert import ErrorAlert
@@ -31,12 +32,14 @@ from sugar3.graphics.alert import ErrorAlert
 from sugar3 import env
 from sugar3.activity import activityfactory
 from gi.repository import SugarExt
+from sugar3.graphics.objectchooser import get_preview_pixbuf
 
 from jarabe.journal.journaltoolbox import MainToolbox
 from jarabe.journal.journaltoolbox import DetailToolbox
 from jarabe.journal.journaltoolbox import EditToolbox
 
 from jarabe.journal.listview import ListView
+from jarabe.journal.iconview import IconView
 from jarabe.journal.detailview import DetailView
 from jarabe.journal.volumestoolbar import VolumesToolbar
 from jarabe.journal import misc
@@ -46,7 +49,6 @@ from jarabe.journal import model
 from jarabe.journal.journalwindow import JournalWindow
 
 from jarabe.model import session
-
 
 J_DBUS_SERVICE = 'org.laptop.Journal'
 J_DBUS_INTERFACE = 'org.laptop.Journal'
@@ -134,6 +136,9 @@ class JournalActivityDBusService(dbus.service.Object):
         pass
 
 
+_VIEW_MODE_LIST = 0
+_VIEW_MODE_ICONS = 1
+
 class JournalActivity(JournalWindow):
     def __init__(self):
         logging.debug('STARTUP: Loading the journal')
@@ -144,12 +149,17 @@ class JournalActivity(JournalWindow):
         self._main_view = None
         self._secondary_view = None
         self._list_view = None
+        self._icon_view = None
         self._detail_view = None
         self._main_toolbox = None
         self._detail_toolbox = None
         self._volumes_toolbar = None
         self._mount_point = '/'
-
+        self._query = None
+        self._last_list_query = None
+        self._last_icon_query = None
+        
+        self._view_mode = _VIEW_MODE_LIST
         self._editing_mode = False
 
         self._setup_main_view()
@@ -216,7 +226,17 @@ class JournalActivity(JournalWindow):
         self._list_view.connect('selection-changed',
                                 self.__selection_changed_cb)
         self._main_view.pack_start(self._list_view, True, True, 0)
-        self._list_view.show()
+        self._has_seen_list = True
+        
+        self._icon_view = IconView(self)
+        self._icon_view.connect('clear-clicked', self.__clear_clicked_cb)
+        self._icon_view.connect('entry-activated', self.__detail_clicked_cb)
+        self._list_view.connect('clear-clicked', self.__clear_clicked_cb)
+        self._list_view.connect('volume-error', self.volume_error_cb)
+        self._main_view.pack_start(self._icon_view, True, True, 0)
+        self._has_seen_icons = False
+        
+        self.change_main_view(self._view_mode)
 
         self._volumes_toolbar = VolumesToolbar()
         self._volumes_toolbar.connect('volume-changed',
@@ -225,9 +245,37 @@ class JournalActivity(JournalWindow):
         self._main_view.pack_start(self._volumes_toolbar, False, True, 0)
 
         self._main_toolbox.connect('query-changed', self._query_changed_cb)
+        self._main_toolbox.connect('view-changed', self._change_main_view_cb)
         self._main_toolbox.search_entry.connect('icon-press',
                                                 self.__search_icon_pressed_cb)
         self._main_toolbox.set_mount_point(self._mount_point)
+
+    def _change_main_view_cb(self, toolbar, new_mode):
+        self.change_main_view(new_mode)
+
+    def _update_main_view(self):
+        self.change_main_view(self,
+                              self._view_mode,
+                              force_update=True)
+
+    def change_main_view(self, new_mode, force_update=False):
+        if new_mode is _VIEW_MODE_LIST:
+            if new_mode is not self._view_mode or \
+                                    not self._query:
+                self._list_view.show()
+                self._icon_view.hide()
+            if self._query is not self._last_list_query or force_update:
+                self._list_view.update_with_query(self._query)
+            self._has_seen_list = True
+        else:
+            if new_mode is not self._view_mode or \
+                                 not self._query:
+                self._icon_view.show()
+                self._list_view.hide()
+            if self._query is not self._last_list_query or force_update:
+                self._icon_view.update_with_query(self._query)
+            self._has_seen_icons = True
+        self._view_mode = new_mode
 
     def _setup_secondary_view(self):
         self._secondary_view = Gtk.VBox()
@@ -261,15 +309,26 @@ class JournalActivity(JournalWindow):
         self.show_main_view()
 
     def update_selected_items_ui(self):
-        selected_items = \
-            len(self.get_list_view().get_model().get_selected_items())
-        self.__selection_changed_cb(None, selected_items)
+        if self._view_mode is _VIEW_MODE_LIST:
+            selected_items = \
+                len(self.get_list_view().get_model().get_selected_items())
+            self.__selection_changed_cb(None, selected_items)
+        else:
+             self._update_main_view()
 
     def __go_back_clicked_cb(self, detail_view):
         self.show_main_view()
 
     def _query_changed_cb(self, toolbar, query):
-        self._list_view.update_with_query(query)
+        self._query = query
+        if self._view_mode is _VIEW_MODE_LIST:
+            self._list_view.update_with_query(query)
+            self._last_list_query = copy.copy(query)
+            view = self._list_view
+        else:
+            self._icon_view.update_with_query(query)
+            self._last_icon_query = copy.copy(query)
+            view = self._icon_view
         self.show_main_view()
 
     def __search_icon_pressed_cb(self, entry, icon_pos, event):
@@ -327,7 +386,7 @@ class JournalActivity(JournalWindow):
         self._mount_point = mount_point
         self.set_editing_mode(False)
         self._main_toolbox.set_mount_point(mount_point)
-        self._edit_toolbox.batch_copy_button.update_mount_point()
+        self._edit_toolbox.batch_copy_button.update_mount_point()\
 
     def __model_created_cb(self, sender, **kwargs):
         misc.handle_bundle_installation(model.get(kwargs['object_id']))
