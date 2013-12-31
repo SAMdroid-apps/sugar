@@ -65,7 +65,7 @@ class ExpandedView(Gtk.IconView):
             if not pb:
                 surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 216, 162)
                 cr = cairo.Context(surface)
-                cr.set_source_rgba(0, 1, 1, 0.5)
+                cr.set_source_rgba(1, 1, 1, 1)
                 cr.set_operator(cairo.OPERATOR_SOURCE)
                 cr.paint()
                 pb = Gdk.pixbuf_get_from_surface(surface, 0, 0, 216, 162)
@@ -118,6 +118,7 @@ class _ItemView(Gtk.Box):
                                Gdk.DragAction.COPY)
         self._top_box.connect('drag-begin', self._drag_begin)
         self._top_box.connect('drag-end', self._drag_end)
+        self._top_box.connect('drag-data-get', self.do_drag_data_get)
         self.pack_start(self._top_box, False, False, 4)
         self._top_box.show()
 
@@ -198,7 +199,7 @@ class _ItemView(Gtk.Box):
         ib.file_name = self._icon_name
         Gtk.drag_set_icon_surface(drag_context, ib.get_surface())
         
-    def do_drag_data_get(self, context, selection, x, y):
+    def do_drag_data_get(self, target, context, selection, x, y):
         uid = self._uid
         target_atom = selection.get_target()
         target_name = target_atom.name()
@@ -211,6 +212,7 @@ class _ItemView(Gtk.Box):
         elif target_name == 'journal-object-id':
             # uid is unicode but Gtk.SelectionData.set() needs str
             selection.set(target_atom, 8, str(uid))
+            logging.error(str(uid))
             return True
 
         return False

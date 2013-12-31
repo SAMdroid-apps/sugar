@@ -19,3 +19,5 @@ sugar_PYTHON =				\
 	palettes.py			\
 	volumestoolbar.py		\
 	newview.py
+
+
