@@ -41,7 +41,6 @@ from jarabe.journal.journaltoolbox import EditToolbox
 from jarabe.journal.listview import ListView
 from jarabe.journal.iconview import IconView
 from jarabe.journal.newview import NewView
-from jarabe.journal.newviewmodel import NewViewModel
 from jarabe.journal.detailview import DetailView
 from jarabe.journal.volumestoolbar import VolumesToolbar
 from jarabe.journal import misc

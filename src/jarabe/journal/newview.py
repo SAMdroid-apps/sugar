@@ -5,6 +5,7 @@
 import logging
 import thread
 import cairo
+import json
 
 from gi.repository import Gtk
 from gi.repository import Gdk
@@ -24,7 +25,6 @@ from jarabe.model import bundleregistry
 from jarabe.journal import model
 from jarabe.journal import misc
 from jarabe.journal.palettes import ObjectPalette
-from jarabe.journal.newviewmodel import NewViewModel
 from jarabe.journal import journalwindow
 
 class ExpandedView(Gtk.IconView):
@@ -97,6 +97,22 @@ class ExpandedView(Gtk.IconView):
     def _img_data_func(self, view, cell, store, i, data):
         img = store.get_value(i, 1)
         cell.props.pixbuf = img
+        
+class BuddyIcon(Icon):
+    __gtype_name__ = 'JournalIconBuddy'
+
+    def __init__(self, buddy):
+        self.set_buddy(buddy)
+
+    def set_buddy(self, buddy):
+        if buddy is None:
+            self.props.icon_name = None
+        else:
+            nick_, xo_color = buddy
+            self.props.icon_name = 'computer-xo'
+            self.props.xo_color = xo_color
+
+    buddy = GObject.property(type=object, setter=set_buddy)
 
 class _ItemView(Gtk.Box):
 
@@ -177,6 +193,32 @@ class _ItemView(Gtk.Box):
         self._top_box.pack_start(self._resume_box, False, False, 4)
         self._resume_box.show()
         self._resume.show()
+        
+        if metadata.get('buddies'):
+            buddies = []
+            try:
+                buddies = json.loads(metadata['buddies']).values()
+            except json.decoder.JSONDecodeError, exception:
+                logging.warning('Cannot decode buddies for %r: %s',
+                                metadata['uid'], exception)
+                                
+            logging.error(buddies)
+
+            self._with = Gtk.Label('with')
+            self._top_box.pack_start(self._with, False, False, 4)
+            self._with.show()
+            
+            for i in buddies:
+                try:
+                    nick, color = i
+                except (AttributeError, ValueError), exception:
+                    logging.warning('Malformed buddies for %r: %s',
+                                    metadata['uid'], exception)
+                else:
+                    b = BuddyIcon((nick, XoColor(color)))
+                    self._top_box.pack_start(b, False, False, 4)
+                    b.show()
+                    continue
 
 	try:
             timestamp = float(metadata.get('timestamp', 0))
@@ -212,9 +254,8 @@ class _ItemView(Gtk.Box):
         elif target_name == 'journal-object-id':
             # uid is unicode but Gtk.SelectionData.set() needs str
             selection.set(target_atom, 8, str(uid))
-            logging.error(str(uid))
             return True
-
+        logging.error('Unknowen drag dest:'+target_name)
         return False
 
     def _drag_end(self, widget, drag_context):
