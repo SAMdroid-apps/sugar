@@ -35,6 +35,7 @@ from sugar3.graphics.icon import Icon, CellRendererIcon
 from sugar3.graphics.xocolor import XoColor
 from sugar3.graphics.alert import Alert
 from sugar3.graphics.palettemenu import PaletteMenuItem
+from sugar3.graphics.palettewindow import CellInvoker
 
 from jarabe.model import bundleregistry
 from jarabe.model import desktop
@@ -42,100 +43,108 @@ from jarabe.view.palettes import ActivityPalette
 from jarabe.journal import misc
 from jarabe.util.normalize import normalize_string
 
+class DialogExample(Gtk.Dialog):
 
-class ActivitiesTreeView(Gtk.TreeView):
+    def __init__(self, parent):
+        Gtk.Dialog.__init__(self, "My Dialog", parent, 0,
+            (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+             Gtk.STOCK_OK, Gtk.ResponseType.OK))
+
+        self.set_default_size(150, 100)
+
+        label = Gtk.Label("This is a dialog to display additional information")
+
+        box = self.get_content_area()
+        box.add(label)
+        self.show_all()
+
+class ActivitiesTreeView(Gtk.IconView):
     __gtype_name__ = 'SugarActivitiesTreeView'
 
     __gsignals__ = {
         'erase-activated': (GObject.SignalFlags.RUN_FIRST, None,
                             ([str])),
+        'detail-activated': (GObject.SignalFlags.RUN_FIRST, None,
+                            ([str])),
     }
 
     def __init__(self):
-        Gtk.TreeView.__init__(self)
+        Gtk.IconView.__init__(self)
 
         self._query = ''
 
-        self.set_headers_visible(False)
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK |
                         Gdk.EventMask.TOUCH_MASK |
                         Gdk.EventMask.BUTTON_RELEASE_MASK)
-        selection = self.get_selection()
-        selection.set_mode(Gtk.SelectionMode.NONE)
 
         self._model = ListModel()
         self._model.set_visible_func(self.__model_visible_cb)
         self.set_model(self._model)
 
-        column = Gtk.TreeViewColumn()
-
         cell_favorites = []
         for i in range(desktop.get_number_of_views()):
             cell_favorites.append(CellRendererFavorite(self, i))
             cell_favorites[i].connect('clicked', self.__favorite_clicked_cb)
-            column.pack_start(cell_favorites[i], True)
-            column.set_cell_data_func(cell_favorites[i],
-                                      self.__favorite_set_data_cb)
+            self.pack_start(cell_favorites[i], True)
+            self.set_cell_data_func(cell_favorites[i],
+                                      self.__favorite_set_data_cb, None)
 
-        self.append_column(column)
-
+        self.set_pixbuf_column(self._model.column_icon)
         cell_icon = CellRendererActivityIcon(self)
-        cell_icon.connect('erase-activated', self.__erase_activated_cb)
         cell_icon.connect('clicked', self.__icon_clicked_cb)
 
-        column = Gtk.TreeViewColumn()
-        column.pack_start(cell_icon, True)
-        column.add_attribute(cell_icon, 'file-name', self._model.column_icon)
-        self.append_column(column)
-
-        self._icon_column = column
+        self.pack_start(cell_icon, True)
+        self.add_attribute(cell_icon, 'file-name', self._model.column_icon)
 
         cell_text = Gtk.CellRendererText()
+        cell_text.set_alignment(0.5, 0.5)
         cell_text.props.ellipsize = Pango.EllipsizeMode.MIDDLE
         cell_text.props.ellipsize_set = True
 
-        column = Gtk.TreeViewColumn()
-        column.props.sizing = Gtk.TreeViewColumnSizing.GROW_ONLY
-        column.props.expand = True
-        column.set_sort_column_id(self._model.column_title)
-        column.pack_start(cell_text, True)
-        column.add_attribute(cell_text, 'markup', self._model.column_title)
-        self.append_column(column)
+        self.pack_start(cell_text, True)
+        self.add_attribute(cell_text, 'markup', self._model.column_title)
+
+        self.set_tooltip_column(self._model.column_tooltip)
 
         cell_text = Gtk.CellRendererText()
-        cell_text.props.xalign = 1
+        cell_text.set_alignment(0.5, 0.5)
 
-        column = Gtk.TreeViewColumn()
-        column.set_alignment(1)
-        column.props.sizing = Gtk.TreeViewColumnSizing.GROW_ONLY
-        column.props.resizable = True
-        column.props.reorderable = True
-        column.props.expand = True
-        column.set_sort_column_id(self._model.column_version)
-        column.pack_start(cell_text, True)
-        column.add_attribute(cell_text, 'text',
-                             self._model.column_version_text)
-        self.append_column(column)
+        self.pack_start(cell_text, True)
+        self.add_attribute(cell_text, 'text',
+                             self._model.column_time)
 
-        cell_text = Gtk.CellRendererText()
-        cell_text.props.xalign = 1
+        self.connect('button-press-event', self._button_press_event)
 
-        column = Gtk.TreeViewColumn()
-        column.set_alignment(1)
-        column.props.sizing = Gtk.TreeViewColumnSizing.GROW_ONLY
-        column.props.resizable = True
-        column.props.reorderable = True
-        column.props.expand = True
-        column.set_sort_column_id(self._model.column_date)
-        column.pack_start(cell_text, True)
-        column.add_attribute(cell_text, 'text', self._model.column_date_text)
-        self.append_column(column)
-
-        self.set_search_column(self._model.column_title)
-        self.set_enable_search(False)
-
-    def __erase_activated_cb(self, cell_renderer, bundle_id):
-        self.emit('erase-activated', bundle_id)
+    def _button_press_event(self, thing, event):
+        if event.button == 3:
+            path = self.get_path_at_pos(int(event.x), int(event.y))
+            bundle_id = self.get_model()[path][1]
+            self.emit('detail-activated', bundle_id)
+            return
+        path, cell = self.get_item_at_pos(int(event.x), int(event.y))
+        if isinstance(cell, CellRendererFavorite):
+            logging.error('1')
+            row = self.get_model()[path]
+            logging.error('2')
+            registry = bundleregistry.get_registry()
+            logging.error('3')
+            col = self._model.column_favorites[cell.favorite_view]
+            isFav = not row[col]
+            registry.set_bundle_favorite(
+                str(row[self._model.column_bundle_id]),
+                str(row[self._model.column_version]),
+                not isFav,
+                cell.favorite_view)
+            logging.error((
+                str(row[self._model.column_bundle_id]),
+                str(row[self._model.column_version]),
+                not row[self._model.column_favorites[cell.favorite_view]],
+                cell.favorite_view))
+            rowList = list(row)
+            rowList[col] = not isFav
+            self._model.set_row(path, rowList) 
+        else:
+            self._start_activity(path)
 
     def __favorite_set_data_cb(self, column, cell, model, tree_iter, data):
         favorite = \
@@ -155,7 +164,8 @@ class ActivitiesTreeView(Gtk.TreeView):
             cell.favorite_view)
 
     def __icon_clicked_cb(self, cell, path):
-        self._start_activity(path)
+        pass
+    #    self._start_activity(path)
 
     def _start_activity(self, path):
         model = self.get_model()
@@ -172,8 +182,9 @@ class ActivitiesTreeView(Gtk.TreeView):
 
         """
         self._query = normalize_string(query.decode('utf-8'))
-        self.get_model().refilter()
+        self.get_model().refilter(self._query)
         matches = self.get_model().iter_n_children(None)
+        #matches = 93489
         return matches
 
     def __model_visible_cb(self, model, tree_iter, data):
@@ -181,33 +192,33 @@ class ActivitiesTreeView(Gtk.TreeView):
         title = normalize_string(title.decode('utf-8'))
         return title is not None and title.find(self._query) > -1
 
-    def do_row_activated(self, path, column):
-        if column == self._icon_column:
-            self._start_activity(path)
+    #def do_row_activated(self, path, column):
+    #    if column == self._model._icon_column:
+    #        
 
 
 class ListModel(Gtk.TreeModelSort):
     __gtype_name__ = 'SugarListModel'
 
     def __init__(self):
-        self.column_bundle_id = 0
+        self.column_bundle_id = 1
         self.column_favorites = []
         for i in range(desktop.get_number_of_views()):
             self.column_favorites.append(self.column_bundle_id + i + 1)
         self.column_icon = self.column_favorites[-1] + 1
         self.column_title = self.column_icon + 1
-        self.column_version = self.column_title + 1
-        self.column_version_text = self.column_version + 1
-        self.column_date = self.column_version_text + 1
-        self.column_date_text = self.column_date + 1
+        self.column_time = self.column_title + 1
+        self.column_version = self.column_time + 1
+        self.column_tooltip = self.column_version + 1
 
-        column_types = [str, str, str, str, str, int, str]
+        column_types = [bool, str, str, str, str, int, str]
         for i in range(desktop.get_number_of_views()):
-            column_types.insert(1, bool)
+            column_types.insert(2, bool)
 
         self._model = Gtk.ListStore()
         self._model.set_column_types(column_types)
         self._model_filter = self._model.filter_new()
+        self._model_filter.set_visible_column(0)
         Gtk.TreeModelSort.__init__(self, model=self._model_filter)
         self.set_sort_column_id(self.column_title, Gtk.SortType.ASCENDING)
 
@@ -256,6 +267,7 @@ class ListModel(Gtk.TreeModelSort):
 
         timestamp = activity_info.get_installation_time()
         version = activity_info.get_activity_version()
+        summary = activity_info.get_summary()
 
         registry = bundleregistry.get_registry()
         favorites = []
@@ -274,23 +286,34 @@ class ListModel(Gtk.TreeModelSort):
                     '<span style="italic" weight="light">%s</span>' % \
                 (activity_info.get_name(), tags)
 
-        model_list = [activity_info.get_bundle_id()]
+        #The icons are always visible at first
+        model_list = [True, activity_info.get_bundle_id()]
+
         for i in range(desktop.get_number_of_views()):
             model_list.append(favorites[i])
         model_list.append(activity_info.get_icon())
+
         model_list.append(title)
-        model_list.append(version)
-        model_list.append(_('Version %s') % version)
-        model_list.append(int(timestamp))
-        model_list.append(util.timestamp_to_elapsed_string(timestamp))
+        version_str = _('Version %s') % version
+        time_str = str(util.timestamp_to_elapsed_string(timestamp))
+        model_list.append(time_str)
+        model_list.append(int(version))
+        if not summary:
+            summary = _('No summary')
+        model_list.append('\n'.join((version_str, summary)))
+        
         self._model.append(model_list)
 
     def set_visible_func(self, func):
         self._model_filter.set_visible_func(func)
 
-    def refilter(self):
-        self._model_filter.refilter()
-
+    def refilter(self, query):
+        for i in self._model:
+            title = i[self.column_title]
+            if query.lower() in title.lower():
+                i[0] = True
+            else:
+                i[0] = False
 
 class CellRendererFavorite(CellRendererIcon):
     __gtype_name__ = 'SugarCellRendererFavorite'
@@ -332,19 +355,6 @@ class CellRendererActivityIcon(CellRendererIcon):
         self.props.prelit_fill_color = prelit_color.get_fill_color()
 
         self._tree_view = tree_view
-
-    def create_palette(self):
-        model = self._tree_view.get_model()
-        row = model[self.props.palette_invoker.path]
-        bundle_id = row[model.column_bundle_id]
-
-        registry = bundleregistry.get_registry()
-        palette = ActivityListPalette(registry.get_bundle(bundle_id))
-        palette.connect('erase-activated', self.__erase_activated_cb)
-        return palette
-
-    def __erase_activated_cb(self, palette, bundle_id):
-        self.emit('erase-activated', bundle_id)
 
 
 class ClearMessageBox(Gtk.EventBox):
@@ -411,16 +421,56 @@ class ActivitiesList(Gtk.VBox):
         self._scrolled_window.show()
 
         self._tree_view = ActivitiesTreeView()
-        self._tree_view.connect('erase-activated', self.__erase_activated_cb)
+        self._tree_view.connect('detail-activated', self.__detail_activated_cb)
         self._scrolled_window.add(self._tree_view)
         self._tree_view.show()
 
         self._alert = None
         self._clear_message_box = None
+        self._showing_bundle_id = ''
 
         desktop_model = desktop.get_model()
         desktop_model.connect('desktop-view-icons-changed',
                               self.__desktop_view_icons_changed_cb)
+
+    def __detail_activated_cb(self, treeview, bundle_id):
+        self.show_activity(bundle_id)
+
+    def show_activity(self, bundle_id):
+        self._showing_bundle_id = bundle_id
+
+        self._activity_info = Gtk.VBox()
+        self.pack_start(self._activity_info, False, False, 4)
+
+        self._info_close = Gtk.Button(label="Close")
+        self._activity_info.pack_start(self._info_close, False, True, 4)
+        self._info_close.connect('clicked', self._close_activity_info)
+
+        registry = bundleregistry.get_registry()
+        bundle = registry.get_bundle(bundle_id)
+
+        user_color = profile.get_color()
+        self._info_icon = Icon(file=bundle.get_icon(), xo_color=user_color)
+        self._activity_info.pack_start(self._info_icon, False, True, 4)
+
+        self._info_name = Gtk.Label()
+        self._info_name.set_markup(_('<b>%s</b> (Version %s)') % ( \
+                                   bundle.get_name(),
+                                   str(bundle.get_activity_version())))
+        self._activity_info.pack_start(self._info_name, False, True, 4)
+
+        self._info_summary = Gtk.Label(bundle.get_summary())
+        self._activity_info.pack_start(self._info_summary, False, True, 4)
+
+        self._info_uninstall = Gtk.Button(label="Uninstall")
+        self._activity_info.pack_start(self._info_uninstall, False, True, 4)
+        self._info_uninstall.connect('clicked', self._uninstall_activity)
+
+        self._activity_info.show_all()
+
+    def _close_activity_info(self, bnt):
+        self._activity_info.hide()
+        self.remove(self._activity_info)
 
     def grab_focus(self):
         # overwrite grab focus in order to grab focus from the parent
@@ -436,7 +486,6 @@ class ActivitiesList(Gtk.VBox):
     def __desktop_view_icons_changed_cb(self, model):
         self._tree_view.destroy()
         self._tree_view = ActivitiesTreeView()
-        self._tree_view.connect('erase-activated', self.__erase_activated_cb)
         self._scrolled_window.add(self._tree_view)
         self._tree_view.show()
 
@@ -496,9 +545,12 @@ class ActivitiesList(Gtk.VBox):
         self.remove(self._alert)
         self._alert = None
 
-    def __erase_activated_cb(self, tree_view, bundle_id):
+    def _uninstall_activity(self, bnt):
+        if not self._showing_bundle_id:
+            return
+
         registry = bundleregistry.get_registry()
-        activity_info = registry.get_bundle(bundle_id)
+        activity_info = registry.get_bundle(self._showing_bundle_id)
 
         alert = Alert()
         alert.props.title = _('Confirm erase')
@@ -513,7 +565,7 @@ class ActivitiesList(Gtk.VBox):
         alert.add_button(Gtk.ResponseType.OK, _('Erase'), erase_icon)
 
         alert.connect('response', self.__erase_confirmation_dialog_response_cb,
-                      bundle_id)
+                      self._showing_bundle_id)
 
         self.add_alert(alert)
 
