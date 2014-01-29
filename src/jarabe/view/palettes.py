@@ -84,7 +84,7 @@ class BasePalette(Palette):
             separator.show()
 
         markup = '<b>%s</b>\n%s' % (data['summary'], data['body'])
-        menu_item = PaletteMenuItem(None, 'toolbar-help',
+        menu_item = PaletteMenuItem(None, 'emblem-notification',
                                     markup_label=markup)
         self.menu_box.append_item(menu_item)
         menu_item.connect('activate', self.__notification_clicked)
