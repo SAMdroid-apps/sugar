@@ -20,6 +20,7 @@ import logging
 from gettext import gettext as _
 import tempfile
 import os
+import time
 
 from gi.repository import GObject
 from gi.repository import Gio
@@ -56,6 +57,7 @@ import jarabe.frame
 class ActivityButton(RadioToolButton):
     def __init__(self, home_activity, group):
         RadioToolButton.__init__(self, group=group)
+        self.notifications = []
 
         self.set_palette_invoker(FrameWidgetInvoker(self))
         self.palette_invoker.cache_palette = False
@@ -88,8 +90,32 @@ class ActivityButton(RadioToolButton):
         else:
             palette = CurrentActivityPalette(self._home_activity)
             palette.connect('done', self.__palette_item_selected_cb)
+
+        for i in self.notifications:
+            palette.add_notification(i)
+
+        palette.connect('notification-removed', self.__notification_removed)
         palette.set_group_id('frame')
         self.set_palette(palette)
+
+    def add_notification(self, data):
+        palette = self.get_palette()
+        if palette:
+            palette.add_notification(data)
+        else:
+            self.notifications.append(data)
+        self._icon.props.pulsing = True
+
+    def __notification_removed(self, palette, id_):
+        new_notifications = []
+
+        for i in self.notifications:
+            if i['id'] != id_:
+                new_notifications.append(i)
+        self.notifications = new_notifications
+
+        if not self.notifications:
+            self._icon.props.pulsing = False
 
     def __palette_item_selected_cb(self, widget):
         frame = jarabe.frame.get_view()
@@ -250,18 +276,34 @@ class ActivitiesTray(HTray):
 
         button = ActivityButton(home_activity, group)
         self.add_item(button)
-        self._buttons[home_activity] = button
+        self._buttons[home_activity.get_activity_id()] = button
+        logging.error(home_activity.get_activity_id())
         button.connect('clicked', self.__activity_clicked_cb, home_activity)
         button.show()
 
+    def add_notification(self, app_id, icon, data):
+        """
+        Insert a notification into the frame
+        """
+        if app_id in self._buttons:
+            bnt = self._buttons[app_id]
+            bnt.add_notification(data)
+        else:
+            bnt = ToolButton()
+            bnt.set_icon_widget(icon)
+            icon.show()
+            bnt.set_palette(palette)
+            self.add_item(bnt)
+            bnt.show()
+
     def __activity_removed_cb(self, home_model, home_activity):
         logging.debug('__activity_removed_cb: %r', home_activity)
-        button = self._buttons[home_activity]
+        button = self._buttons[home_activity.get_activity_id()]
         self.remove_item(button)
-        del self._buttons[home_activity]
+        del self._buttons[home_activity.get_activity_id()]
 
     def _activate_activity(self, home_activity):
-        button = self._buttons[home_activity]
+        button = self._buttons[home_activity.get_activity_id()]
         self._freeze_button_clicks = True
         button.props.active = True
         self._freeze_button_clicks = False

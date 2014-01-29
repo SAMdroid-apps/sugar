@@ -15,6 +15,7 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 import logging
+import time
 
 from gi.repository import Gtk
 from gi.repository import Gdk
@@ -23,6 +24,7 @@ from gi.repository import GObject
 from sugar3.graphics import animator
 from sugar3.graphics import style
 from sugar3.graphics import palettegroup
+from sugar3.graphics.palette import Palette
 from sugar3 import profile
 
 from jarabe.frame.eventarea import EventArea
@@ -70,6 +72,7 @@ class Frame(object):
         logging.debug('STARTUP: Loading the frame')
 
         self._palette_group = palettegroup.get_group('frame')
+        self._uid = 0
 
         self._left_panel = None
         self._right_panel = None
@@ -140,9 +143,9 @@ class Frame(object):
         zoom_toolbar.show()
         zoom_toolbar.connect('level-clicked', self._level_clicked_cb)
 
-        activities_tray = ActivitiesTray()
-        panel.append(activities_tray)
-        activities_tray.show()
+        self._activities_tray = ActivitiesTray()
+        panel.append(self._activities_tray)
+        self._activities_tray.show()
 
         return panel
 
@@ -254,15 +257,17 @@ class Frame(object):
         window.destroy()
         del self._notif_by_icon[icon]
 
-    def __notification_received_cb(self, **kwargs):
-        logging.debug('__notification_received_cb')
+    def _make_notif_icon(self, kwargs):
         icon = NotificationIcon()
 
         hints = kwargs['hints']
 
         icon_file_name = hints.get('x-sugar-icon-file-name', '')
+        icon_name = hints.get('x-sugar-icon-name', '')
         if icon_file_name:
             icon.props.icon_filename = icon_file_name
+        elif icon_name:
+            icon.props.icon_name = icon_name
         else:
             icon.props.icon_name = 'application-octet-stream'
 
@@ -271,11 +276,37 @@ class Frame(object):
             icon_colors = profile.get_color()
         icon.props.xo_color = icon_colors
 
+        return icon
+
+    def __notification_received_cb(self, **kwargs):
+        logging.debug('__notification_received_cb')
+
+        id_ = self._uid
+        self._uid += 1
+
+        app_id = kwargs.get('app_name', None)
+
         duration = kwargs.get('expire_timeout', -1)
         if duration == -1:
             duration = _NOTIFICATION_DURATION
+        timeout = time.time() + duration
 
-        self.add_notification(icon, Gtk.CornerType.TOP_RIGHT, duration)
+        summary = kwargs.get('summary', '')
+        body = kwargs.get('body', '')
+
+        palette = None
+        if summary or body:
+            palette = Palette()
+            palette.props.primary_text = summary
+            palette.props.secondary_text = body
+        
+        iconA = self._make_notif_icon(kwargs)
+        self.add_notification(iconA, Gtk.CornerType.TOP_LEFT, duration)
+
+        data = {'summary': summary, 'body': body, 'timeout': timeout, 'id': id_}
+
+        iconB = self._make_notif_icon(kwargs)
+        self._activities_tray.add_notification(app_id, iconB, data)
 
     def __notification_cancelled_cb(self, **kwargs):
         # Do nothing for now. Our notification UI is so simple, there's no
