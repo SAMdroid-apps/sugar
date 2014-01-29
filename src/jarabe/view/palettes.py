@@ -100,10 +100,17 @@ class BasePalette(Palette):
         self.notification_buttons.remove(notification)
         self.notifications.remove(data)
 
-        logging.error(data['id'])
         self.emit('notification-removed', data['id'])
 
         # TODO: use intents to do something when we make intents
+
+    def remove_all_notifications(self):
+        for button in self.notification_buttons:
+            button.hide()
+            self.menu_box.remove(button)
+
+        self.notifications = []
+        self.notification_buttons = []
 
 class CurrentActivityPalette(BasePalette):
 

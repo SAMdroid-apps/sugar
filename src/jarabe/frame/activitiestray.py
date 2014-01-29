@@ -117,6 +117,12 @@ class ActivityButton(RadioToolButton):
         if not self.notifications:
             self._icon.props.pulsing = False
 
+    def remove_all_notifications(self):
+        self._icon.props.pulsing = False
+        self.notifications = []
+        if self.palette:
+            self.palette.remove_all_notifications()
+
     def __palette_item_selected_cb(self, widget):
         frame = jarabe.frame.get_view()
         frame.hide()
@@ -277,7 +283,6 @@ class ActivitiesTray(HTray):
         button = ActivityButton(home_activity, group)
         self.add_item(button)
         self._buttons[home_activity.get_activity_id()] = button
-        logging.error(home_activity.get_activity_id())
         button.connect('clicked', self.__activity_clicked_cb, home_activity)
         button.show()
 
@@ -336,6 +341,8 @@ class ActivitiesTray(HTray):
         self._activate_activity(home_activity)
 
     def __activity_clicked_cb(self, button, home_activity):
+        button.remove_all_notifications()
+
         if not self._freeze_button_clicks and button.props.active:
             logging.debug('ActivitiesTray.__activity_clicked_cb')
             window = home_activity.get_window()
