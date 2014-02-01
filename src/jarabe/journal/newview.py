@@ -6,6 +6,7 @@ import logging
 import thread
 import cairo
 import json
+from threading import Thread
 
 from gi.repository import Gtk
 from gi.repository import Gdk
@@ -27,6 +28,9 @@ from jarabe.journal import misc
 from jarabe.journal.palettes import ObjectPalette
 from jarabe.journal import journalwindow
 
+UPDATE_SIZE = 30
+
+
 class ExpandedView(Gtk.IconView):
 
     def __init__(self, children_str, ja):
@@ -36,7 +40,6 @@ class ExpandedView(Gtk.IconView):
         self.rebuild(children_str)
         self.set_model(self._store)
         self.set_pixbuf_column(1)
-        #self.set_text_coloumn(2)
         
         pr = Gtk.CellRendererPixbuf()
         pr.set_alignment(0.5, 0.5)
@@ -97,7 +100,8 @@ class ExpandedView(Gtk.IconView):
     def _img_data_func(self, view, cell, store, i, data):
         img = store.get_value(i, 1)
         cell.props.pixbuf = img
-        
+
+
 class BuddyIcon(Icon):
     __gtype_name__ = 'JournalIconBuddy'
 
@@ -113,6 +117,7 @@ class BuddyIcon(Icon):
             self.props.xo_color = xo_color
 
     buddy = GObject.property(type=object, setter=set_buddy)
+
 
 class _ItemView(Gtk.Box):
 
@@ -220,7 +225,7 @@ class _ItemView(Gtk.Box):
                     b.show()
                     continue
 
-	try:
+        try:
             timestamp = float(metadata.get('timestamp', 0))
         except (TypeError, ValueError):
             timestamp_content = 'Unknown'
@@ -286,17 +291,18 @@ class _ItemView(Gtk.Box):
 	            self._expanded_view.hide()
 			
     def update(self, metadata):
-		try:
-                    timestamp = float(metadata.get('timestamp', 0))
-                except (TypeError, ValueError):
-                    timestamp_content = 'Unknown'
-                else:
-                    timestamp_content = util.timestamp_to_elapsed_string(timestamp)
-		self._date_lab.set_markup(timestamp_content)
-		
-		self._title_lab.set_markup('<b>{}</b>'.format(metadata.get( \
-							'title', 'No Title')))
-		self._childern = metadata.get('children', '')
+        try:
+            timestamp = float(metadata.get('timestamp', 0))
+        except (TypeError, ValueError):
+            timestamp_content = 'Unknown'
+        else:
+            timestamp_content = util.timestamp_to_elapsed_string(timestamp)
+        self._date_lab.set_markup(timestamp_content)
+
+        self._title_lab.set_markup('<b>{}</b>'.format(metadata.get( \
+                                                'title', 'No Title')))
+        self._childern = metadata.get('children', '')
+
 
 class NewView(Gtk.EventBox):
 
@@ -313,12 +319,14 @@ class NewView(Gtk.EventBox):
     	self._view_dict = {}
     	self._is_dragging = False
     	
-    	self.override_background_color(Gtk.StateFlags.NORMAL, 
-    					Gdk.RGBA())
+    	self.override_background_color(Gtk.StateFlags.NORMAL, Gdk.RGBA())
     	
     	self._main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     	self._sw.add(self._main_box)
 	self._main_box.show()
+
+        self._spinner = Gtk.Spinner()
+        self._main_box.pack_end(self._spinner, True, True, 0)
 	
     def _show_message(self, text):
         for i in self._kids:
@@ -344,48 +352,64 @@ class NewView(Gtk.EventBox):
         return not (query.get('query') or query.get('mime_type') or
                     query.get('keep') or query.get('mtime') or
                     query.get('activity'))
-	
+
+    def _show_none_found(self, query):
+        if self._is_query_empty(query):
+            documents_path = model.get_documents_path()
+            if query['mountpoints'] == ['/']:
+                self._show_message('Your Journal is empty')
+            elif documents_path and query['mountpoints'] == \
+                                                [documents_path]:
+                self._show_message('Your documents folder is empty')
+            else:
+                self._show_message('This device is empty')
+        else:
+            self._show_message('No matching entries')
+
+    def _re_add_view(self, metadata):
+        self._main_box.pack_start(self._view_dict[metadata['uid']],
+                                              True, True, 0)
+        self._view_dict[metadata['uid']].show()
+        self._view_dict[metadata['uid']].update(metadata)
+
+    def _create_add_view(self, metadata):
+        v = _ItemView(self.ja, metadata)
+        v.connect('drag-changed', self._drag_changed)
+        self._main_box.pack_start(v, True, True, 0)
+        v.show()
+        self._kids.append(v)
+        if metadata['uid']:
+            self._view_dict[metadata['uid']] = v
+
     def update_with_query(self, query):
+        self._spinner.show()
+        self._spinner.start()
+
         for i in self._kids:
     	    i.hide()
     	    self._main_box.remove(i)
     	    
     	if self._label_box:
     	    self._label_box.hide()
-        
-        self._result_set = model.find(query, 10)
+
+        self._result_set = model.find(query, UPDATE_SIZE)
         self._result_set.setup()
         
         if self._result_set.get_length() == 0:
-            if self._is_query_empty(query):
-                documents_path = model.get_documents_path()
-                if query['mountpoints'] == ['/']:
-                    self._show_message('Your Journal is empty')
-                elif documents_path and query['mountpoints'] == \
-                                                 [documents_path]:
-                    self._show_message('Your documents folder is empty')
-                else:
-                    self._show_message('This device is empty')
-            else:
-                self._show_message('No matching entries')
+            GObject.idle_add(self._show_none_found, query)
         else:
-            for i in range(self._result_set.get_length()):
+            do_range = self._result_set.get_length()
+            for i in range(do_range):
                 self._result_set.seek(i)
                 metadata = self._result_set.read()
                 if not metadata.get('is_child', False):
                     if metadata['uid'] in self._view_dict:
-                        self._main_box.pack_start(self._view_dict[metadata['uid']],
-                                              True, True, 0)
-            	        self._view_dict[metadata['uid']].show()
-                        self._view_dict[metadata['uid']].update(metadata)
+                        GObject.idle_add(self._re_add_view, metadata)
                     else:
-            	        v = _ItemView(self.ja, metadata)
-    	                v.connect('drag-changed', self._drag_changed)
-    	                self._main_box.pack_start(v, True, True, 0)
-    	    	        v.show()
-    	    	        self._kids.append(v)
-    	    	        if metadata['uid']:
-                            self._view_dict[metadata['uid']] = v
+                        GObject.idle_add(self._create_add_view, metadata)
+
+        self._spinner.stop()
+        self._spinner.hide()
                         
     def _drag_changed(self, widget, value):
         self._is_dragging = value
