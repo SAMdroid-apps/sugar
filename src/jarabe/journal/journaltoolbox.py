@@ -30,8 +30,6 @@ from sugar3.graphics.palette import Palette
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.graphics.toolcombobox import ToolComboBox
 from sugar3.graphics.toolbutton import ToolButton
-from sugar3.graphics.radiotoolbutton import RadioToolButton
-from sugar3.graphics.toggletoolbutton import ToggleToolButton
 from sugar3.graphics.combobox import ComboBox
 from sugar3.graphics.menuitem import MenuItem
 from sugar3.graphics.palettemenu import PaletteMenuBox
@@ -74,13 +72,14 @@ _DISPLAY_RADIO_GROUP = None
 _VIEW_MODE_LIST = 0
 _VIEW_MODE_ICONS = 1
 
+
 class MainToolbox(ToolbarBox):
 
     __gsignals__ = {
         'query-changed': (GObject.SignalFlags.RUN_FIRST, None,
                           ([object])),
         'view-changed': (GObject.SignalFlags.RUN_FIRST, None,
-                          ([int])),
+                         ([int])),
     }
 
     def __init__(self):

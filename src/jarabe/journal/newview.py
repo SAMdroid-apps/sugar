@@ -3,7 +3,6 @@
 #This is licenced under the GPL3 or whatever
 
 import logging
-import thread
 import cairo
 import json
 
@@ -77,14 +76,14 @@ class ExpandedView(Gtk.IconView):
 
             self._store.append([uid, pb, title])
         self.set_model(self._store)
-        
+
     def create_palette(self):
         tree_model = self.get_model()
         display = Gdk.Display.get_default()
         manager = display.get_device_manager()
         pointer_device = manager.get_client_pointer()
         screen, x, y = pointer_device.get_position()
-        
+
         logging.error(str(x)+':'+str(y))
         path = self.get_path_at_pos(x, y)
         logging.error('path'+str(path))
@@ -95,7 +94,7 @@ class ExpandedView(Gtk.IconView):
 
         palette = ObjectPalette(self._ja, metadata, detail=False)
         return palette
-        
+
     def _title_data_func(self, view, cell, store, i, data):
         title = store.get_value(i, 2)
         cell.props.markup = title
@@ -127,9 +126,9 @@ class BuddyIcon(EventIcon):
 class _ItemView(Gtk.Box):
 
     __gsignals__ = {
-        'drag-changed' : (GObject.SIGNAL_RUN_FIRST, None, (bool,))
+        'drag-changed': (GObject.SIGNAL_RUN_FIRST, None, (bool,))
     }
-	
+
     def __init__(self, ja, metadata):
         Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL)
         self._uid = metadata['uid']
@@ -139,9 +138,10 @@ class _ItemView(Gtk.Box):
         self._ja = ja
 
         self._top_box = Gtk.Box()
-        self._top_box.drag_source_set(Gdk.ModifierType.BUTTON1_MASK,
-                              [Gtk.TargetEntry.new('journal-object-id', 0, 0)],
-                               Gdk.DragAction.COPY)
+        self._top_box.drag_source_set(
+            Gdk.ModifierType.BUTTON1_MASK,
+            [Gtk.TargetEntry.new('journal-object-id', 0, 0)],
+            Gdk.DragAction.COPY)
         self._top_box.connect('drag-begin', self._drag_begin)
         self._top_box.connect('drag-end', self._drag_end)
         self._top_box.connect('drag-data-get', self.do_drag_data_get)
@@ -150,14 +150,14 @@ class _ItemView(Gtk.Box):
 
         self._expand_box = Gtk.EventBox()
         self._expand = Icon(icon_name='go-down',
-			icon_size=Gtk.IconSize.MENU,
-			fill_color=style.COLOR_TOOLBAR_GREY.get_svg())
+                            icon_size=Gtk.IconSize.MENU,
+                            fill_color=style.COLOR_TOOLBAR_GREY.get_svg())
         self._expand_box.connect('button-press-event', self._expand_cb)
         self._expand_box.add(self._expand)
         self._top_box.pack_start(self._expand_box, False, False, 4)
         self._expand_box.show()
         self._expand.show()
-		
+
         bundle_id = metadata.get('activity', '')
         if not bundle_id:
             bundle_id = metadata.get('bundle_id', '')
@@ -169,7 +169,7 @@ class _ItemView(Gtk.Box):
                 action = 'Did a'
         else:
             action = 'Did a'
-		
+
         self._action_lab = Gtk.Label()
         self._action_lab.set_markup(action)
         self._top_box.pack_start(self._action_lab, False, False, 4)
@@ -181,15 +181,15 @@ class _ItemView(Gtk.Box):
         self._a_icon.set_palette(palette)
         self._top_box.pack_start(self._a_icon, False, False, 0)
         self._a_icon.show()
-		
+
         self._title_lab = Gtk.Label()
         self._top_box.pack_start(self._title_lab, False, False, 4)
         self._title_lab.show()
-		
+
         self._resume_box = Gtk.EventBox()
         self._resume = Icon(icon_name='go-next',
-				icon_size=Gtk.IconSize.MENU,
-				fill_color=style.COLOR_TOOLBAR_GREY.get_svg())
+                            icon_size=Gtk.IconSize.MENU,
+                            fill_color=style.COLOR_TOOLBAR_GREY.get_svg())
         self._resume_box.connect('button-press-event', self._resume_cb)
         self._resume_box.add(self._resume)
         self._top_box.pack_start(self._resume_box, False, False, 4)
@@ -204,7 +204,7 @@ class _ItemView(Gtk.Box):
         self._buddies_box.show()
 
         self._buddy_btns = {}
-		
+
         self._date_lab = Gtk.Label()
         self._top_box.pack_start(self._date_lab, False, False, 4)
         self._date_lab.show()
@@ -219,7 +219,7 @@ class _ItemView(Gtk.Box):
         ib.xocolor = self._xocolor
         ib.file_name = self._icon_name
         Gtk.drag_set_icon_surface(drag_context, ib.get_surface())
-        
+
     def do_drag_data_get(self, target, context, selection, x, y):
         uid = self._uid
         target_atom = selection.get_target()
@@ -242,32 +242,33 @@ class _ItemView(Gtk.Box):
         self.emit('drag-changed', False)
 
     def _resume_cb(self, arg1, arg2=None):
-        misc.resume(model.get(self._uid), 
-                alert_window=journalwindow.get_journal_window())
-			
+        misc.resume(model.get(self._uid),
+                    alert_window=journalwindow.get_journal_window())
+
     def _expand_cb(self, arg1, arg2=None):
-	    if not self._is_expanded:
-	        self._expand.props.icon_name = 'go-next'
-	        self._is_expanded = True
-	        if self._expanded_view and self._children:
-	            self._expanded_view.rebuild(self._children)
-	            self._expanded_view.show()
-	        elif self._children:
-	            self._expanded_view = ExpandedView(self._children, self._ja)
-	            self.pack_end(self._expanded_view, False, False, 4)
-	            self._expanded_view.show()
-	        else:
-	            pass
-	    else:
-	        self._is_expanded = False
-	        self._expand.props.icon_name = 'go-down'
-	        if self._children:
-	            self._expanded_view.hide()
-			
+        if not self._is_expanded:
+            self._expand.props.icon_name = 'go-next'
+            self._is_expanded = True
+            if self._expanded_view and self._children:
+                self._expanded_view.rebuild(self._children)
+                self._expanded_view.show()
+            elif self._children:
+                self._expanded_view = ExpandedView(self._children, self._ja)
+                self.pack_end(self._expanded_view, False, False, 4)
+                self._expanded_view.show()
+            else:
+                pass
+        else:
+            self._is_expanded = False
+            self._expand.props.icon_name = 'go-down'
+            if self._children:
+                self._expanded_view.hide()
+
     def update(self, metadata):
         if misc.is_activity_bundle(metadata):
-            self._xocolor = XoColor('%s,%s' % (style.COLOR_BUTTON_GREY.get_svg(),
-                                          style.COLOR_TRANSPARENT.get_svg()))
+            self._xocolor = XoColor(
+                '%s,%s' % (style.COLOR_BUTTON_GREY.get_svg(),
+                           style.COLOR_TRANSPARENT.get_svg()))
         else:
             self._xocolor = misc.get_icon_color(metadata)
         self._a_icon.set_xo_color(self._xocolor)
@@ -280,10 +281,10 @@ class _ItemView(Gtk.Box):
             timestamp_content = util.timestamp_to_elapsed_string(timestamp)
         self._date_lab.set_markup(timestamp_content)
 
-        self._title_lab.set_markup('<b>{}</b>'.format(metadata.get( \
-                                                'title', 'No Title')))
+        self._title_lab.set_markup('<b>{}</b>'.format(metadata.get(
+                                   'title', 'No Title')))
 
-        self._childern = self._uid + '|' + metadata.get('children', '') 
+        self._childern = self._uid + '|' + metadata.get('children', '')
 
         if metadata.get('buddies'):
             buddies = []
@@ -302,55 +303,55 @@ class _ItemView(Gtk.Box):
                                     metadata['uid'], exception)
                 else:
                     if not nick + color in self._buddy_btns:
-                       b = BuddyIcon((nick, XoColor(color)))
-                       self._buddies_box.pack_start(b, False, False, 0)
-                       b.show()
-                       self._buddy_btns[nick + color] = b
-                       continue
+                        b = BuddyIcon((nick, XoColor(color)))
+                        self._buddies_box.pack_start(b, False, False, 0)
+                        b.show()
+                        self._buddy_btns[nick + color] = b
+                        continue
 
 
 class NewView(Gtk.EventBox):
 
     def __init__(self, ja):
-    	Gtk.EventBox.__init__(self)
-    	self._sw = Gtk.ScrolledWindow()
-    	self.add(self._sw)
-    	self._sw.show()
+        Gtk.EventBox.__init__(self)
+        self._sw = Gtk.ScrolledWindow()
+        self.add(self._sw)
+        self._sw.show()
 
-    	self._main_box = None
-    	self._label_box =  None
-    	self.ja = ja
-    	self._kids = []
-    	self._view_dict = {}
-    	self._is_dragging = False
-    	
-    	self.override_background_color(Gtk.StateFlags.NORMAL, Gdk.RGBA())
-    	
-    	self._main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    	self._sw.add(self._main_box)
-	self._main_box.show()
+        self._main_box = None
+        self._label_box = None
+        self.ja = ja
+        self._kids = []
+        self._view_dict = {}
+        self._is_dragging = False
+
+        self.override_background_color(Gtk.StateFlags.NORMAL, Gdk.RGBA())
+
+        self._main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self._sw.add(self._main_box)
+        self._main_box.show()
 
         self._spinner = Gtk.Spinner()
         self._main_box.pack_end(self._spinner, True, True, 0)
-	
+
     def _show_message(self, text):
         for i in self._kids:
-    	    i.hide()
-    	    self._main_box.remove(i)
-    	if self._label_box:
-    	    self._label_box.hide()
-    	    self._main_box.remove(self._label_box)
+            i.hide()
+            self._main_box.remove(i)
+        if self._label_box:
+            self._label_box.hide()
+            self._main_box.remove(self._label_box)
         self._label_box = Gtk.Alignment.new(0.5, 0.5, 0.1, 0.1)
         self._main_box.pack_start(self._label_box, True, True, 0)
         self._label_box.show()
-        
+
         b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self._label_box.add(b)
         b.show()
         l = Gtk.Label(text)
         b.pack_start(l, True, True, 0)
         l.show()
-        
+
     def _is_query_empty(self, query):
         # FIXME: This is a hack, we shouldn't have to update this every time
         # a new search term is added.
@@ -363,8 +364,7 @@ class NewView(Gtk.EventBox):
             documents_path = model.get_documents_path()
             if query['mountpoints'] == ['/']:
                 self._show_message('Your Journal is empty')
-            elif documents_path and query['mountpoints'] == \
-                                                [documents_path]:
+            elif documents_path and query['mountpoints'] == [documents_path]:
                 self._show_message('Your documents folder is empty')
             else:
                 self._show_message('This device is empty')
@@ -373,7 +373,7 @@ class NewView(Gtk.EventBox):
 
     def _re_add_view(self, metadata):
         self._main_box.pack_start(self._view_dict[metadata['uid']],
-                                              True, True, 0)
+                                  True, True, 0)
         self._view_dict[metadata['uid']].show()
         self._view_dict[metadata['uid']].update(metadata)
 
@@ -391,15 +391,15 @@ class NewView(Gtk.EventBox):
         self._spinner.start()
 
         for i in self._kids:
-    	    i.hide()
-    	    self._main_box.remove(i)
-    	    
-    	if self._label_box:
-    	    self._label_box.hide()
+            i.hide()
+            self._main_box.remove(i)
+
+        if self._label_box:
+            self._label_box.hide()
 
         self._result_set = model.find(query, UPDATE_SIZE)
         self._result_set.setup()
-        
+
         if self._result_set.get_length() == 0:
             GObject.idle_add(self._show_none_found, query)
         else:
@@ -415,9 +415,9 @@ class NewView(Gtk.EventBox):
 
         self._spinner.stop()
         self._spinner.hide()
-                        
+
     def _drag_changed(self, widget, value):
         self._is_dragging = value
-                        
+
     def is_dragging(self):
         return self._is_dragging

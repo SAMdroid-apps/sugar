@@ -294,7 +294,7 @@ class JournalActivity(JournalWindow):
         self._mount_point = mount_point
         self.set_editing_mode(False)
         self._main_toolbox.set_mount_point(mount_point)
-        self._edit_toolbox.batch_copy_button.update_mount_point()\
+        self._edit_toolbox.batch_copy_button.update_mount_poi
 
     def __model_created_cb(self, sender, **kwargs):
         misc.handle_bundle_installation(model.get(kwargs['object_id']))
@@ -325,11 +325,7 @@ class JournalActivity(JournalWindow):
         return
 
     def __window_state_event_cb(self, window, event):
-        logging.debug('window_state_event_cb %r', self)
-        if event.changed_mask & Gdk.WindowState.ICONIFIED:
-            state = event.new_window_state
-            visible = not state & Gdk.WindowState.ICONIFIED
-            #self._list_view.set_is_visible(visible)
+        pass
 
     def _check_available_space(self):
         """Check available space on device
