@@ -122,10 +122,10 @@ class MainToolbox(ToolbarBox):
 
 
         # TODO: enable it when the DS supports saving the buddies.
-        self._with_search_combo = self._get_with_search_combo()
-        tool_item = ToolComboBox(self._with_search_combo)
-        self.toolbar.insert(tool_item, -1)
-        tool_item.show()
+        #self._with_search_combo = self._get_with_search_combo()
+        #tool_item = ToolComboBox(self._with_search_combo)
+        #self.toolbar.insert(tool_item, -1)
+        #tool_item.show()
 
         self._sorting_button = SortingButton()
         self.toolbar.insert(self._sorting_button, -1)

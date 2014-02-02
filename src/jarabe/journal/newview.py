@@ -6,16 +6,14 @@ import logging
 import thread
 import cairo
 import json
-from threading import Thread
 
 from gi.repository import Gtk
 from gi.repository import Gdk
 from gi.repository import GObject
 from gi.repository.GdkPixbuf import Pixbuf
 
-from sugar3.graphics.icon import CanvasIcon, Icon, EventIcon, _IconBuffer
+from sugar3.graphics.icon import Icon, EventIcon, _IconBuffer
 from sugar3.graphics import style
-from sugar3.datastore import datastore
 from sugar3 import util
 from sugar3.graphics.xocolor import XoColor
 from sugar3.graphics.objectchooser import get_preview_pixbuf
@@ -25,7 +23,7 @@ from jarabe.model import bundleregistry
 
 from jarabe.journal import model
 from jarabe.journal import misc
-from jarabe.journal.palettes import ObjectPalette
+from jarabe.journal.palettes import ObjectPalette, BuddyPalette
 from jarabe.journal import journalwindow
 
 UPDATE_SIZE = 30
@@ -36,35 +34,39 @@ class ExpandedView(Gtk.IconView):
     def __init__(self, children_str, ja):
         self._ja = ja
         Gtk.IconView.__init__(self)
-        
+
         self.rebuild(children_str)
         self.set_model(self._store)
         self.set_pixbuf_column(1)
-        
+
         pr = Gtk.CellRendererPixbuf()
         pr.set_alignment(0.5, 0.5)
         self.pack_start(pr, True)
         self.set_cell_data_func(pr, self._img_data_func, None)
-        
+
         tr = Gtk.CellRendererText()
         tr.set_alignment(0.5, 0.5)
         self.pack_start(tr, True)
         self.set_cell_data_func(tr, self._title_data_func, None)
-        
+
         self._invoker = CursorInvoker(self)
-        
+
         self.connect('item-activated', self._launch_cb)
-        
+
     def _launch_cb(self, self_again, path):
-        misc.resume(model.get(self._store[path][0]), 
-                alert_window=journalwindow.get_journal_window())
-        
+        misc.resume(model.get(self._store[path][0]),
+                    alert_window=journalwindow.get_journal_window())
+
     def rebuild(self, children_str):
-    	self._store = Gtk.ListStore(str, Pixbuf, str)
+        self._store = Gtk.ListStore(str, Pixbuf, str)
         for uid in children_str.split('|'):
+            if not uid:
+                continue
+
             metadata = model.get(uid)
             title = metadata.get('title', 'No Title')
             pb = get_preview_pixbuf(metadata.get('preview', ''))
+
             if not pb:
                 surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 216, 162)
                 cr = cairo.Context(surface)
@@ -72,6 +74,7 @@ class ExpandedView(Gtk.IconView):
                 cr.set_operator(cairo.OPERATOR_SOURCE)
                 cr.paint()
                 pb = Gdk.pixbuf_get_from_surface(surface, 0, 0, 216, 162)
+
             self._store.append([uid, pb, title])
         self.set_model(self._store)
         
@@ -102,10 +105,11 @@ class ExpandedView(Gtk.IconView):
         cell.props.pixbuf = img
 
 
-class BuddyIcon(Icon):
+class BuddyIcon(EventIcon):
     __gtype_name__ = 'JournalIconBuddy'
 
     def __init__(self, buddy):
+        EventIcon.__init__(self)
         self.set_buddy(buddy)
 
     def set_buddy(self, buddy):
@@ -115,6 +119,7 @@ class BuddyIcon(Icon):
             nick_, xo_color = buddy
             self.props.icon_name = 'computer-xo'
             self.props.xo_color = xo_color
+            self.props.palette = BuddyPalette((nick_, xo_color.to_string()))
 
     buddy = GObject.property(type=object, setter=set_buddy)
 
@@ -174,18 +179,10 @@ class _ItemView(Gtk.Box):
         self._a_icon = EventIcon(file_name=self._icon_name)
         palette = ObjectPalette(ja, model.get(self._uid))
         self._a_icon.set_palette(palette)
-        if misc.is_activity_bundle(metadata):
-            self._xocolor = XoColor('%s,%s' % (style.COLOR_BUTTON_GREY.get_svg(),
-                                          style.COLOR_TRANSPARENT.get_svg()))
-        else:
-            self._xocolor = misc.get_icon_color(metadata)
-        self._a_icon.set_xo_color(self._xocolor)
         self._top_box.pack_start(self._a_icon, False, False, 0)
         self._a_icon.show()
 		
         self._title_lab = Gtk.Label()
-        self._title_lab.set_markup('<b>{}</b>'.format(metadata.get( \
-							'title', 'No Title')))
         self._top_box.pack_start(self._title_lab, False, False, 4)
         self._title_lab.show()
 		
@@ -198,44 +195,21 @@ class _ItemView(Gtk.Box):
         self._top_box.pack_start(self._resume_box, False, False, 4)
         self._resume_box.show()
         self._resume.show()
-        
-        if metadata.get('buddies'):
-            buddies = []
-            try:
-                buddies = json.loads(metadata['buddies']).values()
-            except json.decoder.JSONDecodeError, exception:
-                logging.warning('Cannot decode buddies for %r: %s',
-                                metadata['uid'], exception)
-                                
-            logging.error(buddies)
 
-            self._with = Gtk.Label('with')
-            self._top_box.pack_start(self._with, False, False, 4)
-            self._with.show()
-            
-            for i in buddies:
-                try:
-                    nick, color = i
-                except (AttributeError, ValueError), exception:
-                    logging.warning('Malformed buddies for %r: %s',
-                                    metadata['uid'], exception)
-                else:
-                    b = BuddyIcon((nick, XoColor(color)))
-                    self._top_box.pack_start(b, False, False, 4)
-                    b.show()
-                    continue
+        self._with = Gtk.Label('with')
+        self._top_box.pack_start(self._with, False, False, 4)
 
-        try:
-            timestamp = float(metadata.get('timestamp', 0))
-        except (TypeError, ValueError):
-            timestamp_content = 'Unknown'
-        else:
-            timestamp_content = util.timestamp_to_elapsed_string(timestamp)
+        self._buddies_box = Gtk.Box()
+        self._top_box.pack_start(self._buddies_box, False, False, 0)
+        self._buddies_box.show()
+
+        self._buddy_btns = {}
 		
         self._date_lab = Gtk.Label()
-        self._date_lab.set_markup(timestamp_content)
         self._top_box.pack_start(self._date_lab, False, False, 4)
         self._date_lab.show()
+
+        self.update(metadata)
 
     def _drag_begin(self, widget, drag_context):
         self._is_dragging = True
@@ -291,6 +265,13 @@ class _ItemView(Gtk.Box):
 	            self._expanded_view.hide()
 			
     def update(self, metadata):
+        if misc.is_activity_bundle(metadata):
+            self._xocolor = XoColor('%s,%s' % (style.COLOR_BUTTON_GREY.get_svg(),
+                                          style.COLOR_TRANSPARENT.get_svg()))
+        else:
+            self._xocolor = misc.get_icon_color(metadata)
+        self._a_icon.set_xo_color(self._xocolor)
+
         try:
             timestamp = float(metadata.get('timestamp', 0))
         except (TypeError, ValueError):
@@ -301,7 +282,31 @@ class _ItemView(Gtk.Box):
 
         self._title_lab.set_markup('<b>{}</b>'.format(metadata.get( \
                                                 'title', 'No Title')))
-        self._childern = metadata.get('children', '')
+
+        self._childern = self._uid + '|' + metadata.get('children', '') 
+
+        if metadata.get('buddies'):
+            buddies = []
+            try:
+                buddies = json.loads(metadata['buddies']).values()
+            except json.decoder.JSONDecodeError, exception:
+                logging.warning('Cannot decode buddies for %r: %s',
+                                metadata['uid'], exception)
+            self._with.show()
+
+            for i in buddies:
+                try:
+                    nick, color = i
+                except (AttributeError, ValueError), exception:
+                    logging.warning('Malformed buddies for %r: %s',
+                                    metadata['uid'], exception)
+                else:
+                    if not nick + color in self._buddy_btns:
+                       b = BuddyIcon((nick, XoColor(color)))
+                       self._buddies_box.pack_start(b, False, False, 0)
+                       b.show()
+                       self._buddy_btns[nick + color] = b
+                       continue
 
 
 class NewView(Gtk.EventBox):

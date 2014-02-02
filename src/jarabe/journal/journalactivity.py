@@ -24,7 +24,6 @@ from gi.repository import Gdk
 from gi.repository import GdkX11
 import dbus
 import statvfs
-import copy
 import os
 
 from sugar3.graphics.alert import ErrorAlert
@@ -32,16 +31,11 @@ from sugar3.graphics.alert import ErrorAlert
 from sugar3 import env
 from sugar3.activity import activityfactory
 from gi.repository import SugarExt
-from sugar3.graphics.objectchooser import get_preview_pixbuf
 
 from jarabe.journal.journaltoolbox import MainToolbox
-from jarabe.journal.journaltoolbox import DetailToolbox
 from jarabe.journal.journaltoolbox import EditToolbox
 
-from jarabe.journal.listview import ListView
-from jarabe.journal.iconview import IconView
 from jarabe.journal.newview import NewView
-from jarabe.journal.detailview import DetailView
 from jarabe.journal.volumestoolbar import VolumesToolbar
 from jarabe.journal import misc
 from jarabe.journal.objectchooser import ObjectChooser
@@ -137,9 +131,6 @@ class JournalActivityDBusService(dbus.service.Object):
         pass
 
 
-_VIEW_MODE_LIST = 0
-_VIEW_MODE_ICONS = 1
-
 class JournalActivity(JournalWindow):
     def __init__(self):
         logging.debug('STARTUP: Loading the journal')
@@ -159,8 +150,7 @@ class JournalActivity(JournalWindow):
         self._query = None
         self._last_list_query = None
         self._last_icon_query = None
-        
-        self._view_mode = _VIEW_MODE_LIST
+
         self._editing_mode = False
 
         self._setup_main_view()
@@ -215,7 +205,7 @@ class JournalActivity(JournalWindow):
         self._edit_toolbox = EditToolbox(self)
         self._main_view = Gtk.VBox()
         self._main_view.set_can_focus(True)
-        
+
         self._new_view = NewView(self)
         self._main_view.pack_start(self._new_view, True, True, 0)
         self._new_view.show()
@@ -231,7 +221,7 @@ class JournalActivity(JournalWindow):
         self._main_toolbox.search_entry.connect('icon-press',
                                                 self.__search_icon_pressed_cb)
         self._main_toolbox.set_mount_point(self._mount_point)
-        
+
         self.show_main_view()
 
     def _change_main_view_cb(self, toolbar, new_mode):
@@ -239,18 +229,9 @@ class JournalActivity(JournalWindow):
 
     def change_main_view(self, new_mode, force_update=False):
         if self._query is not None:
-        	self._new_view.update_with_query(self._query)
+            self._new_view.update_with_query(self._query)
 
     def _setup_secondary_view(self):
-        #self._secondary_view = Gtk.VBox()
-
-        #self._detail_toolbox = DetailToolbox(self)
-        #self._detail_toolbox.connect('volume-error', self.volume_error_cb)
-
-        #self._detail_view = DetailView(self)
-        #self._detail_view.connect('go-back-clicked', self.__go_back_clicked_cb)
-        #self._secondary_view.pack_end(self._detail_view, True, True, 0)
-        #self._detail_view.show()
         return
 
     def _key_press_event_cb(self, widget, event):
@@ -275,12 +256,6 @@ class JournalActivity(JournalWindow):
         self.show_main_view()
 
     def update_selected_items_ui(self):
-        #if self._view_mode is _VIEW_MODE_LIST:
-        #    selected_items = \
-        #        len(self.get_list_view().get_model().get_selected_items())
-        #    self.__selection_changed_cb(None, selected_items)
-        #else:
-        #     self._update_main_view()
         return
 
     #def __go_back_clicked_cb(self, detail_view):
