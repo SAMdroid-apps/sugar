@@ -165,8 +165,8 @@ class NotificationButton(ToolButton):
 
 class NotificationPulsingIcon(PulsingIcon):
 
-    SIZE = 19
-    POSITION = 22
+    size = 19
+    position = 22
 
     def __init__(self, filename=None, name=None, colors=None):
         PulsingIcon.__init__(self)
@@ -190,7 +190,7 @@ class NotificationPulsingIcon(PulsingIcon):
         self._badge = get_surface(icon_name='emblem-notification',
                                   stroke_color=style.COLOR_WHITE.get_svg(),
                                   fill_color=style.COLOR_BLACK.get_svg(),
-                                  width=self.SIZE, height=self.SIZE)
+                                  width=self.size, height=self.size)
 
     def hide_badge(self):
         self._badge = None
@@ -198,7 +198,7 @@ class NotificationPulsingIcon(PulsingIcon):
     def do_draw(self, cr):
         PulsingIcon.do_draw(self, cr)
         if self._badge:
-            cr.set_source_surface(self._badge, self.POSITION, self.POSITION)
+            cr.set_source_surface(self._badge, self.position, self.position)
             cr.paint()
 
 
@@ -214,7 +214,9 @@ class NotificationIcon(Gtk.EventBox):
     _PULSE_TIMEOUT = 3
 
     def __init__(self, **kwargs):
-        self._icon = PulsingIcon(pixel_size=style.STANDARD_ICON_SIZE)
+        self._icon = NotificationPulsingIcon()
+        self._icon.props.pixel_size = style.STANDARD_ICON_SIZE
+        self._icon.position = 28
         Gtk.EventBox.__init__(self, **kwargs)
         self.props.visible_window = False
 
