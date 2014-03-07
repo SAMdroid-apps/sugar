@@ -42,9 +42,23 @@ class NotificationBox(Gtk.VBox):
     MAX_ITEMS = 5
     MAX_WIDTH = 70
 
-    def __init__(self, name):
+    def __init__(self, name, max_items=None, line_above=False):
+        """
+        name: The notifs to listen for
+        max_items: The max to show at one time
+        line_above: Displays a seperater at the top of this when true
+        """
         Gtk.VBox.__init__(self)
         self._name = name
+        self._keep_hidden = True
+
+        if max_items:
+            self.MAX_ITEMS = max_items
+
+        if line_above:
+            separator = PaletteMenuItemSeparator()
+            separator.show()
+            self.add(separator)
 
         self._notifications_box = Gtk.VBox()
         self._notifications_box.show()
@@ -67,8 +81,10 @@ class NotificationBox(Gtk.VBox):
         self.add(clear_item)
 
         self._service = notifications.get_service()
-        for entry in self._service.retrieve_by_name(self._name):
-            self._add(entry['summary'], entry['body'])
+        notifications_list = self._service.retrieve_by_name(self._name)
+        if notifications_list:
+            for entry in notifications_list:
+                self._add(entry['summary'], entry['body'])
         self._service.notification_received.connect(
             self.__notification_received_cb)
 
@@ -79,6 +95,8 @@ class NotificationBox(Gtk.VBox):
         self._scrolled_window.set_size_request(-1, height)
 
     def _add(self, summary, body):
+        self.show()
+
         icon = Icon()
         icon.props.icon_name = 'emblem-notification'
         icon.props.icon_size = Gtk.IconSize.SMALL_TOOLBAR
