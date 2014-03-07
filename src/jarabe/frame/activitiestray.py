@@ -64,9 +64,10 @@ class ActivityButton(RadioToolButton):
         self.palette_invoker.cache_palette = False
 
         self._home_activity = home_activity
+        self._id = home_activity.get_activity_id()
         self._notify_launch_hid = None
 
-        self._icon = PulsingIcon()
+        self._icon = NotificationPulsingIcon()
         self._icon.props.base_color = home_activity.get_icon_color()
         self._icon.props.pulse_color = \
             XoColor('%s,%s' % (style.COLOR_BUTTON_GREY.get_svg(),
@@ -84,6 +85,20 @@ class ActivityButton(RadioToolButton):
                 'notify::launch-status', self.__notify_launch_status_cb)
         elif home_activity.props.launch_status == shell.Activity.LAUNCH_FAILED:
             self._on_failed_launch()
+
+        service = notifications.get_service()
+        service.notification_received.connect(self.__notification_received_cb)
+        service.buffer_cleared.connect(self.__buffer_cleared_cb)
+
+    def __notification_received_cb(self, **kwargs):
+        name = kwargs.get('app_name')
+        if name == self._id:
+            self._icon.show_badge()
+
+    def __buffer_cleared_cb(self, **kwargs):
+        name = kwargs.get('app_name')
+        if name == self._id:
+            self._icon.hide_badge()
 
     def create_palette(self):
         if self._home_activity.is_journal():
