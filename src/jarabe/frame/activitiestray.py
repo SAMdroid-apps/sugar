@@ -253,10 +253,13 @@ class ActivitiesTray(HTray):
         logging.debug('ActivitiesTray.__notification_received_cb')
 
         name = kwargs.get('app_name')
+        hints = kwargs.get('hints')
+
+        if hints.get('x-sugar-from-activity', False):
+            return  # Dealt with by activity icons
 
         button = self._buttons_by_name.get(name, None)
         if button is None:
-            hints = kwargs.get('hints')
             icon = NotificationPulsingIcon(
                 hints.get('x-sugar-icon-file-name', ''),
                 hints.get('x-sugar-icon-name', ''),
