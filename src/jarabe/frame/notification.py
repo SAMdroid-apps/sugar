@@ -164,13 +164,16 @@ class NotificationButton(ToolButton):
 
 
 class NotificationPulsingIcon(PulsingIcon):
+    __gtype_name__ = 'SugarNotificationPulsingIcon'
+
+    position = GObject.property(type=int, default=22)
 
     SIZE = 19
-    POSITION = 22
 
     def __init__(self, filename=None, name=None, colors=None):
         PulsingIcon.__init__(self)
         self._badge = None
+        self.props.position = 22
 
         if filename:
             self.props.icon_filename = filename
@@ -198,7 +201,8 @@ class NotificationPulsingIcon(PulsingIcon):
     def do_draw(self, cr):
         PulsingIcon.do_draw(self, cr)
         if self._badge:
-            cr.set_source_surface(self._badge, self.POSITION, self.POSITION)
+            cr.set_source_surface(self._badge, self.props.position,
+                                  self.props.position)
             cr.paint()
 
 
@@ -214,7 +218,9 @@ class NotificationIcon(Gtk.EventBox):
     _PULSE_TIMEOUT = 3
 
     def __init__(self, **kwargs):
-        self._icon = PulsingIcon(pixel_size=style.STANDARD_ICON_SIZE)
+        self._icon = NotificationPulsingIcon()
+        self._icon.props.pixel_size = style.STANDARD_ICON_SIZE
+        self._icon.props.position = 28
         Gtk.EventBox.__init__(self, **kwargs)
         self.props.visible_window = False
 
