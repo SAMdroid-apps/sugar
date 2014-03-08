@@ -64,9 +64,10 @@ class ActivityButton(RadioToolButton):
         self.palette_invoker.cache_palette = False
 
         self._home_activity = home_activity
+        self._id = home_activity.get_activity_id()
         self._notify_launch_hid = None
 
-        self._icon = PulsingIcon()
+        self._icon = NotificationPulsingIcon()
         self._icon.props.base_color = home_activity.get_icon_color()
         self._icon.props.pulse_color = \
             XoColor('%s,%s' % (style.COLOR_BUTTON_GREY.get_svg(),
@@ -84,6 +85,12 @@ class ActivityButton(RadioToolButton):
                 'notify::launch-status', self.__notify_launch_status_cb)
         elif home_activity.props.launch_status == shell.Activity.LAUNCH_FAILED:
             self._on_failed_launch()
+
+    def show_badge(self):
+            self._icon.show_badge()
+
+    def hide_badge(self):
+            self._icon.hide_badge()
 
     def create_palette(self):
         if self._home_activity.is_journal():
@@ -253,10 +260,10 @@ class ActivitiesTray(HTray):
         logging.debug('ActivitiesTray.__notification_received_cb')
 
         name = kwargs.get('app_name')
+        hints = kwargs.get('hints')
 
         button = self._buttons_by_name.get(name, None)
         if button is None:
-            hints = kwargs.get('hints')
             icon = NotificationPulsingIcon(
                 hints.get('x-sugar-icon-file-name', ''),
                 hints.get('x-sugar-icon-name', ''),
@@ -299,11 +306,14 @@ class ActivitiesTray(HTray):
         button.connect('clicked', self.__activity_clicked_cb, home_activity)
         button.show()
 
+        self._buttons_by_name[home_activity.get_activity_id()] = button
+
     def __activity_removed_cb(self, home_model, home_activity):
         logging.debug('__activity_removed_cb: %r', home_activity)
         button = self._buttons[home_activity]
         self.remove_item(button)
         del self._buttons[home_activity]
+        del self._buttons_by_name[home_activity.get_activity_id()]
 
     def _activate_activity(self, home_activity):
         button = self._buttons[home_activity]
