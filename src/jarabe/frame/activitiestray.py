@@ -66,7 +66,7 @@ class ActivityButton(RadioToolButton):
         self._home_activity = home_activity
         self._notify_launch_hid = None
 
-        self._icon = PulsingIcon()
+        self._icon = NotificationPulsingIcon()
         self._icon.props.base_color = home_activity.get_icon_color()
         self._icon.props.pulse_color = \
             XoColor('%s,%s' % (style.COLOR_BUTTON_GREY.get_svg(),
@@ -109,6 +109,12 @@ class ActivityButton(RadioToolButton):
             self._on_failed_launch()
         else:
             self._icon.props.pulsing = False
+
+    def show_badge(self):
+        self._icon.show_badge()
+
+    def hide_badge(self):
+        self._icon.hide_badge()
 
 
 class InviteButton(ToolButton):
@@ -296,6 +302,7 @@ class ActivitiesTray(HTray):
         button = ActivityButton(home_activity, group)
         self.add_item(button)
         self._buttons[home_activity] = button
+        self._buttons_by_name[home_activity.get_activity_id()] = button
         button.connect('clicked', self.__activity_clicked_cb, home_activity)
         button.show()
 
@@ -304,6 +311,7 @@ class ActivitiesTray(HTray):
         button = self._buttons[home_activity]
         self.remove_item(button)
         del self._buttons[home_activity]
+        del self._buttons_by_name[home_activity.get_activity_id()]
 
     def _activate_activity(self, home_activity):
         button = self._buttons[home_activity]
