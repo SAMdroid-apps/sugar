@@ -69,8 +69,10 @@ class NotificationBox(Gtk.VBox):
         self.add(clear_item)
 
         self._service = notifications.get_service()
-        for entry in self._service.retrieve_by_name(self._name):
-            self._add(entry['summary'], entry['body'])
+        notifications_list = self._service.retrieve_by_name(self._name)
+        if notifications_list:
+            for entry in notifications_list:
+                self._add(entry['summary'], entry['body'])
         self._service.notification_received.connect(
             self.__notification_received_cb)
 
