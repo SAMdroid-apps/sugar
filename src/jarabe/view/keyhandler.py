@@ -19,9 +19,12 @@ import os
 import logging
 
 from gi.repository import Gdk
+from gi.repository import Gtk
 from gi.repository import SugarExt
 
 from sugar3.test import uitree
+from sugar3.graphics.xocolor import XoColor
+from sugar3.graphics import style
 
 from jarabe.model.sound import sound
 from jarabe.model import shell
@@ -30,11 +33,13 @@ from jarabe.view.tabbinghandler import TabbingHandler
 from jarabe.model.shell import ShellModel
 from jarabe import config
 from jarabe.journal import journalactivity
+from jarabe.frame.notification import NotificationIcon
 
 
 _VOLUME_STEP = sound.VOLUME_STEP
 _VOLUME_MAX = 100
 _TABBING_MODIFIER = Gdk.ModifierType.MOD1_MASK
+_VOLUME_NOTIFICATION_DURATION = 2000
 
 
 _actions_table = {
@@ -75,6 +80,7 @@ class KeyHandler(object):
         self._key_pressed = None
         self._keycode_pressed = 0
         self._keystate_pressed = 0
+        self._old_notification = None
 
         self._key_grabber = SugarExt.KeyGrabber()
         self._key_grabber.connect('key-pressed',
@@ -110,6 +116,25 @@ class KeyHandler(object):
 
         sound.set_volume(volume)
         sound.set_muted(volume == 0)
+
+        notification = NotificationIcon(pulse=False)
+
+        icon_number = int(volume / 33) * 33
+        if icon_number == 99:
+            icon_number = 100
+        notification.props.icon_name = 'speaker{}-{:03d}'.format(
+            '-muted' if sound.get_muted() else '', icon_number)
+        if sound.get_muted():
+            notification.props.xo_color = XoColor(
+                '%s,%s' % (style.COLOR_WHITE.get_svg(),
+                           style.COLOR_WHITE.get_svg()))
+
+        if self._old_notification:
+            self._frame.remove_notification(self._old_notification)
+        self._frame.add_notification(notification,
+                                     corner=Gtk.CornerType.BOTTOM_RIGHT,
+                                     duration=_VOLUME_NOTIFICATION_DURATION)
+        self._old_notification = notification
 
     def handle_previous_window(self, event_time):
         self._tabbing_handler.previous_activity(event_time)
