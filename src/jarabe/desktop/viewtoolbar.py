@@ -30,6 +30,7 @@ from sugar3.graphics import style
 from sugar3.graphics import iconentry
 from sugar3.graphics.radiotoolbutton import RadioToolButton
 
+from jarabe.onboard.hotspot import get_widget_registry
 from jarabe.desktop import favoritesview
 from jarabe.model import desktop
 
@@ -76,6 +77,7 @@ class ViewToolbar(Gtk.Toolbar):
         self.search_entry.connect('activate', self._entry_activated_cb)
         self.search_entry.connect('changed', self._entry_changed_cb)
         tool_item.add(self.search_entry)
+        get_widget_registry().register('desktop_search', self.search_entry)
         self.search_entry.show()
 
         self._add_separator(expand=True)

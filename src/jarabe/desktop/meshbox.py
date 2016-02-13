@@ -31,6 +31,7 @@ from sugar3.graphics.palette import Palette
 from sugar3.graphics.palettemenu import PaletteMenuBox
 from sugar3.graphics.palettemenu import PaletteMenuItem
 
+from jarabe.onboard.hotspot import get_widget_registry
 from jarabe.model import neighborhood
 from jarabe.model.buddy import get_owner_instance
 from jarabe.view.buddyicon import BuddyIcon
@@ -420,6 +421,8 @@ class MeshBox(ViewContainer):
         if buddy_model.is_owner():
             return
         icon = BuddyIcon(buddy_model)
+        get_widget_registry().register(
+            'mesh_buddy#{}'.format(buddy_model.get_key()), icon)
         self.add(icon)
         icon.show()
 

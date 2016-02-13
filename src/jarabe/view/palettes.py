@@ -39,6 +39,7 @@ from jarabe.view.viewsource import setup_view_source
 from jarabe.view.viewhelp import setup_view_help
 from jarabe.view.viewhelp import should_show_view_help
 from jarabe.journal import misc
+from jarabe.onboard.hotspot import get_widget_registry
 
 
 class BasePalette(Palette):
@@ -181,6 +182,8 @@ class ActivityPalette(Palette):
                                     xo_color=xo_color)
         menu_item.connect('activate', self.__start_activate_cb)
         self.menu_box.pack_end(menu_item, True, True, 0)
+        menu_item.activity_name = name
+        get_widget_registry().register('activity_palette_start_new', menu_item)
         menu_item.show()
         self.set_content(self.menu_box)
         self.menu_box.show_all()

@@ -50,6 +50,7 @@ from jarabe.frame.frameinvoker import FrameWidgetInvoker
 from jarabe.frame.notification import NotificationIcon
 from jarabe.frame.notification import NotificationButton
 from jarabe.frame.notification import NotificationPulsingIcon
+from jarabe.onboard.hotspot import get_widget_registry
 import jarabe.frame
 
 
@@ -309,6 +310,8 @@ class ActivitiesTray(HTray):
             group = None
 
         button = ActivityButton(home_activity, group)
+        if home_activity.is_journal():
+            get_widget_registry().register('journal_icon', button)
         self.add_item(button)
         self._buttons[home_activity] = button
         self._buttons_by_name[home_activity.get_activity_id()] = button
@@ -326,6 +329,10 @@ class ActivitiesTray(HTray):
         button = self._buttons[home_activity]
         self._freeze_button_clicks = True
         button.props.active = True
+        if not home_activity.is_journal():
+            # For onboarding ideas, we can't have the journal as an
+            # activity, as it then might get the journal with 2 hotspots
+            get_widget_registry().register('current_activity', button)
         self._freeze_button_clicks = False
 
         self.scroll_to_item(button)

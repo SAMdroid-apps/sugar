@@ -24,6 +24,7 @@ from sugar3.graphics import style
 
 from jarabe.frame import clipboard
 from jarabe.frame.clipboardicon import ClipboardIcon
+from jarabe.onboard.hotspot import get_widget_registry
 
 
 class _ContextMap(object):
@@ -62,6 +63,7 @@ class ClipboardTray(tray.VTray):
 
     def __init__(self):
         tray.VTray.__init__(self, align=tray.ALIGN_TO_END)
+        get_widget_registry().register('clipboard_tray', self)
         self._icons = {}
         self._context_map = _ContextMap()
 

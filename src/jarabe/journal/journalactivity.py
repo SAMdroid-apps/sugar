@@ -32,6 +32,7 @@ from sugar3 import env
 from sugar3.activity import activityfactory
 from gi.repository import SugarExt
 
+from jarabe.onboard.hotspot import get_widget_registry
 from jarabe.journal.journaltoolbox import MainToolbox
 from jarabe.journal.journaltoolbox import DetailToolbox
 from jarabe.journal.journaltoolbox import EditToolbox
@@ -244,9 +245,10 @@ class JournalActivity(JournalWindow):
         self._main_toolbox = MainToolbox()
         self._edit_toolbox = EditToolbox(self)
         self._main_view = Gtk.VBox()
-        self._main_view.set_can_focus(True)
+        get_widget_registry().register('journal_main_view', self._main_view)
 
         self._list_view = ListView(self, enable_multi_operations=True)
+        self._main_view.set_can_focus(True)
         self._list_view.connect('detail-clicked', self.__detail_clicked_cb)
         self._list_view.connect('clear-clicked', self.__clear_clicked_cb)
         self._list_view.connect('volume-error', self.volume_error_cb)
@@ -257,6 +259,7 @@ class JournalActivity(JournalWindow):
         self._list_view.connect('selection-changed',
                                 self.__selection_changed_cb)
         self._main_view.pack_start(self._list_view, True, True, 0)
+        get_widget_registry().register('journal_list_view', self._list_view)
         self._list_view.show()
 
         self._volumes_toolbar = VolumesToolbar()

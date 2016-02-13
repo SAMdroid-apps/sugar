@@ -42,6 +42,7 @@
             <description>This int is used to set a limit to the number of open activities. By default (0), there is no limit.</description>
         </key>
         <child name="user" schema="org.sugarlabs.user" />
+        <child name="onboard" schema="org.sugarlabs.onboard" />
         <child name="journal" schema="org.sugarlabs.journal" />
         <child name="sound" schema="org.sugarlabs.sound" />
         <child name="date" schema="org.sugarlabs.date" />
@@ -88,6 +89,17 @@
             <description>Label associated with age, e.g., '2nd Grade'</description>
         </key>
         <child name="background" schema="org.sugarlabs.user.background" />
+    </schema>
+    <schema id="org.sugarlabs.onboard" path="/org/sugarlabs/onboard/">
+        <key name="current-steps" type="as">
+            <default>[]</default>
+            <summary>Current steps in the onboarding program</summary>
+            <description>If [], it will be reset to default.</description>
+        </key>
+        <key name="completed" type="b">
+            <default>false</default>
+            <summary>Has the user completed the onboarding</summary>
+        </key>
     </schema>
     <schema id="org.sugarlabs.user.background" path="/org/sugarlabs/user/background/">
         <key name="image-path" type="s">

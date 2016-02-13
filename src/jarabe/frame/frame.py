@@ -56,10 +56,11 @@ class _Animation(animator.Animation):
         self._frame.move(current)
 
 
-class Frame(object):
+class Frame(GObject.GObject):
 
     def __init__(self):
         logging.debug('STARTUP: Loading the frame')
+        GObject.GObject.__init__(self)
 
         self.settings = Gio.Settings('org.sugarlabs.frame')
         self._palette_group = palettegroup.get_group('frame')
@@ -104,6 +105,8 @@ class Frame(object):
         else:
             self.hide()
 
+    hide_signal = GObject.Signal('frame-hide')
+
     def hide(self):
         if not self._wanted:
             return
@@ -117,6 +120,9 @@ class Frame(object):
         self._animator = animator.Animator(0.5)
         self._animator.add(_Animation(self, 0.0))
         self._animator.start()
+        self.hide_signal.emit()
+
+    show_signal = GObject.Signal('frame-show')
 
     def show(self):
         if self._wanted:
@@ -130,6 +136,7 @@ class Frame(object):
         self._animator = animator.Animator(0.5)
         self._animator.add(_Animation(self, 1.0))
         self._animator.start()
+        self.show_signal.emit()
 
     def move(self, pos):
         self.current_position = pos

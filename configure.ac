@@ -80,6 +80,7 @@ src/jarabe/util/Makefile
 src/jarabe/util/telepathy/Makefile
 src/jarabe/view/Makefile
 src/jarabe/webservice/Makefile
+src/jarabe/onboard/Makefile
 src/Makefile
 ])
 

@@ -3,6 +3,7 @@ SUBDIRS = 		\
 	desktop		\
 	frame 		\
 	journal		\
+	onboard		\
 	model		\
 	view		\
 	intro		\

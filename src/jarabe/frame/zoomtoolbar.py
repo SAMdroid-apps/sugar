@@ -27,6 +27,7 @@ from sugar3.graphics.palette import Palette
 from sugar3.graphics.radiotoolbutton import RadioToolButton
 
 from jarabe.frame.frameinvoker import FrameWidgetInvoker
+from jarabe.onboard.hotspot import get_widget_registry
 from jarabe.model import shell
 
 
@@ -84,6 +85,8 @@ class ZoomToolbar(Gtk.Toolbar):
         palette.set_group_id('frame')
         button.set_palette(palette)
 
+        get_widget_registry().register(
+            'zoom#{}'.format(zoom_level), button)
         return button
 
     def __level_clicked_cb(self, button, level):

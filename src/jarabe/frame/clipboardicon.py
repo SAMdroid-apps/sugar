@@ -32,6 +32,7 @@ from jarabe.frame import clipboard
 from jarabe.frame.clipboardmenu import ClipboardMenu
 from jarabe.frame.frameinvoker import FrameWidgetInvoker
 from jarabe.frame.notification import NotificationIcon
+from jarabe.onboard.hotspot import get_widget_registry
 import jarabe.frame
 
 
@@ -40,6 +41,7 @@ class ClipboardIcon(RadioToolButton):
 
     def __init__(self, cb_object, group):
         RadioToolButton.__init__(self, group=group)
+        get_widget_registry().register('clipboard_icon', self)
 
         self.props.palette_invoker = FrameWidgetInvoker(self)
         self.palette_invoker.props.toggle_palette = True

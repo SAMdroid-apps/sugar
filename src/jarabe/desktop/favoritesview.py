@@ -49,6 +49,7 @@ from jarabe.model import shell
 from jarabe.model import bundleregistry
 from jarabe.model import desktop
 from jarabe.journal import misc
+from jarabe.onboard.hotspot import get_widget_registry
 
 from jarabe.desktop import schoolserver
 from jarabe.desktop.schoolserver import RegisterError
@@ -120,6 +121,7 @@ class FavoritesView(ViewContainer):
         self._layout = None
 
         owner_icon = OwnerIcon(style.XLARGE_ICON_SIZE)
+        get_widget_registry().register('owner_icon', owner_icon)
         owner_icon.connect('register-activate', self.__register_activate_cb)
 
         current_activity = CurrentActivityIcon()
@@ -307,9 +309,12 @@ class FavoritesView(ViewContainer):
         registry.connect('bundle-changed', self.__activity_changed_cb)
 
     def _add_activity(self, activity_info):
-        if activity_info.get_bundle_id() == 'org.laptop.JournalActivity':
+        bundle_id = activity_info.get_bundle_id()
+        if bundle_id == 'org.laptop.JournalActivity':
             return
         icon = ActivityIcon(activity_info)
+        get_widget_registry().register(
+            'activity_icon#{}'.format(bundle_id), icon)
         icon.props.pixel_size = style.STANDARD_ICON_SIZE
         # icon.set_resume_mode(self._resume_mode)
         self.add(icon)
