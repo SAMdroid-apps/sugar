@@ -77,8 +77,7 @@ class OnboardingController(GObject.GObject):
 
     def __step_done_cb(self, step, view):
         step.disconnect_by_func(self.__step_done_cb)
-        view.hide()
-        view.destroy()
+        view.done()
         self._done_step(step)
 
     def __key_step_done_cb(self, step, hotspot):

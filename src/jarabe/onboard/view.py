@@ -3,7 +3,7 @@ from gi.repository import Gdk
 from gi.repository import GObject
 
 from sugar3.graphics import style
-from sugar3.graphics.icon import Icon
+from sugar3.graphics.icon import Icon, get_surface
 from sugar3.graphics.animator import Animator, Animation
 
 
@@ -22,6 +22,17 @@ _MAX_WIDTH = style.GRID_CELL_SIZE * 3
 
 
 class StepView(Gtk.Window):
+    '''
+    Step view, shows a step's text and image.  Uses the metadata
+    from the step argument.
+
+    The user sees a window that they can not interact with, that moves
+    away from the mouse when they mouse over it.
+
+    Args:
+        step (jarabe.onboard.steps.Step):  the step to show
+    '''
+
     def __init__(self, step):
         Gtk.Window.__init__(self)
         self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK)
@@ -126,6 +137,18 @@ class StepView(Gtk.Window):
             self._animator.add(_MoveAnimation(self, self.get_position(), dest))
             self._animator.start()
 
+    def done(self):
+        '''
+        Animate out as the user is successful.
+        The view will self-destroy and hide on completion.
+        '''
+        self._top_label.set_markup('DONE')
+        if self._animator is not None:
+            self._animator.stop()
+        self._animator = Animator(3)
+        self._animator.add(_DoneAnimation(self))
+        self._animator.start()
+
     @GObject.property
     def step(self):
         return self._step
@@ -146,3 +169,61 @@ class _MoveAnimation(Animation):
         x = (frame * self._dest[0]) + (inv * self._source[0])
         y = (frame * self._dest[1]) + (inv * self._source[1])
         self._window.move(int(x), int(y))
+
+
+class _DoneAnimation(Animation):
+
+    SIZE = style.LARGE_ICON_SIZE
+
+    def __init__(self, window):
+        Animation.__init__(self, 0.0, 1.0)
+        self._window = window
+        self._subdraw = False
+        self._frame = 0.0
+
+        self._icon = get_surface(icon_name='tick-mask',
+                                 width=self.SIZE,
+                                 height=self.SIZE)
+        self._window.connect('draw', self.__draw_cb)
+
+    def next_frame(self, frame):
+        if frame == 1.0:
+            self._window.hide()
+            self._window.destroy()
+            return
+        self._frame = frame
+        self._subdraw = False
+        self._window.queue_draw()
+
+    def __draw_cb(self, window, cr):
+        if self._subdraw:
+            return
+        self._subdraw = True
+        window.draw(cr)
+        self._subdraw = False
+
+        alloc = window.get_allocation()
+        x = (alloc.width/2) - (self.SIZE/2)
+        y = (alloc.height/2) - (self.SIZE/2)
+        cr.set_source_rgba(1, 1, 1, self._frame)
+
+        # Above
+        cr.rectangle(0, 0, alloc.width, y)
+        cr.fill()
+        # Below
+        cr.rectangle(0, y+self.SIZE, alloc.width, alloc.height)
+        cr.fill()
+        # Left
+        cr.rectangle(0, 0, x, alloc.height)
+        cr.fill()
+        # Right
+        cr.rectangle(x+self.SIZE, 0, alloc.width, alloc.height)
+        cr.fill()
+
+        cr.rectangle(x, y, self.SIZE, self.SIZE)
+        # WTF, we need a translate as well as saying the position
+        #      in the rectangle.  Otherwise, it is visible at 0, 0
+        cr.translate(x, y)
+        cr.mask_surface(self._icon)
+        cr.translate(-x, -y)
+        return True
