@@ -142,10 +142,9 @@ class StepView(Gtk.Window):
         Animate out as the user is successful.
         The view will self-destroy and hide on completion.
         '''
-        self._top_label.set_markup('DONE')
         if self._animator is not None:
             self._animator.stop()
-        self._animator = Animator(3)
+        self._animator = Animator(1)
         self._animator.add(_DoneAnimation(self))
         self._animator.start()
 
@@ -214,10 +213,10 @@ class _DoneAnimation(Animation):
         cr.rectangle(0, y+self.SIZE, alloc.width, alloc.height)
         cr.fill()
         # Left
-        cr.rectangle(0, 0, x, alloc.height)
+        cr.rectangle(0, y, x, alloc.height)
         cr.fill()
         # Right
-        cr.rectangle(x+self.SIZE, 0, alloc.width, alloc.height)
+        cr.rectangle(x+self.SIZE, y, alloc.width, alloc.height)
         cr.fill()
 
         cr.rectangle(x, y, self.SIZE, self.SIZE)

@@ -203,7 +203,7 @@ class Hotspot(GObject.GObject):
         tl = self._widget.get_toplevel()
         # Be safe and make sure to invalidate a little too much
         # so that we don't leave any artifacts onscreen
-        r = _CENTER * self._scale * (self._state + 0.02) + 1
+        r = _CENTER * self._scale * (self._state + 0.4) + 1
         tl.queue_draw_area(
             int(self._x - r), int(self._y - r),
             int(r*2), int(r*2))
