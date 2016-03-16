@@ -93,12 +93,12 @@
     <schema id="org.sugarlabs.onboard" path="/org/sugarlabs/onboard/">
         <key name="current-steps" type="as">
             <default>[]</default>
-            <summary>Current steps in the onboarding program</summary>
+            <summary>Current steps in the onboarding program (hotspot visible)</summary>
             <description>If [], it will be reset to default.</description>
         </key>
-        <key name="completed" type="b">
-            <default>false</default>
-            <summary>Has the user completed the onboarding</summary>
+        <key name="completed-steps" type="as">
+            <default>[]</default>
+            <summary>Steps in the onboarding that are maked as done</summary>
         </key>
     </schema>
     <schema id="org.sugarlabs.user.background" path="/org/sugarlabs/user/background/">

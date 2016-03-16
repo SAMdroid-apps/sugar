@@ -15,29 +15,27 @@ class Step(GObject.GObject):
     Steps are the basic object for the onboarding system.  They
     go through the following lifecycle:
 
-    1. Waiting to become an active step (see STEPS constant)
-    2. Showing as a hotspot in the desired location (see
-        :func:`get_hotspot_location`).
-    3. Once the hotspot is activated, the step information
-        is displayed to the user, and :func:`bind_done_listeners`
-        is called.
-    4. When the Step emits the done_signal, it is marked as done
+    1. The step is bound (see :func:`bind_done_listeners`)
+    2. The done_signal is emitted
+    3. The step is marked as done, and :func:`unbind_done_listeners` is
+       called
 
-    This is different for keypress steps though:
-
-    1. Same as above
-    2. Key press hotspot is shown, and done signals are bound
-    3. When done signals emitted, the step information is shown to
-        the user and the step marked as done
-    4. When another step is visible, this step's information is hidden
+    During that lifecycle, the step can have a hotspot displayed (see
+    :func:`get_hotspot_location`) and a informational window can be shows
+    (see the title, body and continue_string properties).  This is slightly
+    different for a "keypress" step, as the informational window is shown
+    after the done_signal regardless of the source of the event.
 
     Args:
         title (str):  a small string (~4 words) to display in bold at the top
         body (str):  an elaboration on the text string, explain the step
         continue_string (str):  a reiteration of how to complete the
             step, usually in the format "Do X to continue"
-        children (list of indexes):  indexs of the children steps of this
+        children (list of indexes):  indexes of the children steps of this
             Step in the "STEPS" constant array
+        image (str):  the name of an image in the icon path (technically an
+            icon name) that is square.  It will be displayed in the
+            popup that users see when they hover over the hotspot.
 
     Kwargs:
         process (Process.*):  the process this Step should run in, either
@@ -96,6 +94,9 @@ class Step(GObject.GObject):
     def bind_done_listeners(self):
         self.done_signal.emit()
 
+    def unbind_done_listeners(self):
+        pass
+
 
 class ActivityIconHoverStep(Step):
     def get_hotspot_location(self):
@@ -106,15 +107,23 @@ class ActivityIconHoverStep(Step):
             invoker = widget.props.palette_invoker
             invoker.connect('popup', self.__popup_cb)
 
+    def unbind_done_listeners(self):
+        for widget in get_widget_registry().get_all('activity_icon#'):
+            invoker = widget.props.palette_invoker
+            invoker.disconnect_by_func(self.__popup_cb)
+            if invoker.props.palette is not None:
+                try:
+                    invoker.props.palette.disconnect_by_func(
+                        self.__secondary_popup_cb)
+                except TypeError:
+                    pass  # Not bound
+
     def __popup_cb(self, invoker):
         invoker.props.palette.connect(
             'secondary-popup', self.__secondary_popup_cb)
 
     def __secondary_popup_cb(self, palette):
         self.done_signal.emit()
-        for widget in get_widget_registry().get_all('activity_icon#'):
-            invoker = widget.props.palette_invoker
-            invoker.disconnect_by_func(self.__popup_cb)
 
 
 class LaunchActivityStep(Step):
@@ -133,9 +142,11 @@ class LaunchActivityStep(Step):
         model = shell.get_model()
         model.connect('launch-started', self.__launch_started_cb)
 
+    def unbind_done_listeners(self):
+        shell.get_model().disconnect_by_func(self.__launch_started_cb)
+
     def __launch_started_cb(self, model, activity):
         self.done_signal.emit()
-        model.disconnect_by_func(self.__launch_started_cb)
 
 
 class ChangeTitleStep(Step):
@@ -149,9 +160,12 @@ class ChangeTitleStep(Step):
         widget = get_widget_registry().get('title_entry')
         widget.entry.connect('changed', self.__entry_changed_cb)
 
+    def unbind_done_listeners(self):
+        widget = get_widget_registry().get('title_entry')
+        widget.entry.disconnect_by_func(self.__entry_changed_cb)
+
     def __entry_changed_cb(self, entry):
         self.done_signal.emit()
-        entry.disconnect_by_func(self.__entry_changed_cb)
 
 
 class ChangeDescriptionStep(Step):
@@ -162,9 +176,12 @@ class ChangeDescriptionStep(Step):
         widget = get_widget_registry().get('description_item')
         widget.changed_signal.connect(self.__changed_cb)
 
+    def unbind_done_listeners(self):
+        widget = get_widget_registry().get('description_item')
+        widget.disconnect_by_func(self.__changed_cb)
+
     def __changed_cb(self, widget):
         self.done_signal.emit()
-        widget.disconnect_by_func(self.__changed_cb)
         
 
 class OpenFrameStep(Step):
@@ -173,8 +190,11 @@ class OpenFrameStep(Step):
 
     def bind_done_listeners(self):
         from jarabe import frame
-        frame = frame.get_view()
-        frame.show_signal.connect(self.__done_cb)
+        self._frame = frame.get_view()
+        self._frame.show_signal.connect(self.__done_cb)
+
+    def unbind_done_listeners(self):
+        self._frame.disconnect_by_func(self.__done_cb)
 
     def __done_cb(self, frame):
         self.done_signal.emit()
@@ -187,26 +207,37 @@ class DragToClipboardStep(Step):
 
     def bind_done_listeners(self):
         from jarabe.frame import clipboard
-        cb_service = clipboard.get_instance()
-        cb_service.connect('object-added', self.__done_cb)
+        self._cb_service = clipboard.get_instance()
+        self._cb_service.connect('object-added', self.__done_cb)
+
+    def unbind_done_listeners(self):
+        self._cb_service.disconnect_by_func(self.__done_cb)
 
     def __done_cb(self, cb_service, cb_object):
         self.done_signal.emit()
-        cb_service.disconnect_by_func(self.__done_cb)
 
 
 class DragFromClipboardStep(Step):
+    _child = None
+
     def get_hotspot_location(self):
         return 'clipboard_icon', HotspotScale.NORMAL
 
     def bind_done_listeners(self):
-        child = get_widget_registry().get('clipboard_icon').get_child()
-        print('THIS IS THE CHILD', child)
-        child.connect('drag-begin', self.__done_cb)
+        get_widget_registry().wait_for('clipboard_icon', self.__got_widget_cb,
+                                       None)
+
+    def __got_widget_cb(self, widget, user_data):
+        self._child = widget.get_child()
+        self._child.connect('drag-begin', self.__done_cb)
+
+    def unbind_done_listeners(self):
+        if self._child is not None:
+            self._child.disconnect_by_func(self.__done_cb)
+        self._child = None
 
     def __done_cb(self, child, context):
         self.done_signal.emit()
-        child.disconnect_by_func(self.__done_cb)
 
 
 class CurrentActivityStep(Step):
@@ -215,12 +246,14 @@ class CurrentActivityStep(Step):
 
     def bind_done_listeners(self):
         from jarabe import frame
-        frame = frame.get_view()
-        frame.hide_signal.connect(self.__done_cb)
+        self._frame = frame.get_view()
+        self._frame.hide_signal.connect(self.__done_cb)
+
+    def unbind_done_listeners(self):
+        self._frame.disconnect_by_func(self.__done_cb)
 
     def __done_cb(self, frame):
         self.done_signal.emit()
-        frame.disconnect_by_func(self.__done_cb)
 
 
 class ChangeZoomStep(Step):
@@ -235,21 +268,26 @@ class ChangeZoomStep(Step):
         model = shell.get_model()
         model.zoom_level_changed.connect(self.__done_cb)
 
+    def unbind_done_listeners(self):
+        shell.get_model().zoom_level_changed.disconnect(self.__done_cb)
+
     def __done_cb(self, **kwargs):
         model = shell.get_model()
         if model.zoom_level == self._zoom:
             self.done_signal.emit()
-            model.zoom_level_changed.disconnect(self.__done_cb)
 
 
 class MeshSearchStep(Step):
     def get_hotspot_location(self):
-        print('DESKTOP SEARCH', get_widget_registry().get('desktop_search'))
         return 'desktop_search', HotspotScale.NORMAL
 
     def bind_done_listeners(self):
         entry = get_widget_registry().get('desktop_search')
         entry.connect('changed', self.__done_cb)
+
+    def unbind_done_listeners(self):
+        entry = get_widget_registry().get('desktop_search')
+        entry.disconnect_by_func(self.__done_cb)
 
     def __done_cb(self, entry):
         self.done_signal.emit()
@@ -265,16 +303,23 @@ class MeshBuddyStep(Step):
             invoker = widget.props.palette_invoker
             invoker.connect('popup', self.__popup_cb)
 
+    def unbind_done_listeners(self):
+        for widget in get_widget_registry().get_all('mesh_buddy#'):
+            invoker = widget.props.palette_invoker
+            invoker.disconnect_by_func(self.__popup_cb)
+            if invoker.props.palette is not None:
+                try:
+                    invoker.props.palette.disconnect_by_func(
+                        self.__secondary_popup_cb)
+                except TypeError:
+                    pass  # Not bound
+
     def __popup_cb(self, invoker):
         invoker.props.palette.connect(
             'secondary-popup', self.__secondary_popup_cb)
 
     def __secondary_popup_cb(self, palette):
         self.done_signal.emit()
-        palette.disconnect_by_func(self.__secondary_popup_cb)
-        for widget in get_widget_registry().get_all('mesh_buddy#'):
-            invoker = widget.props.palette_invoker
-            invoker.disconnect_by_func(self.__popup_cb)
 
 
 class OpenJournalStep(Step):
@@ -286,21 +331,20 @@ class OpenJournalStep(Step):
         model.connect('active-activity-changed', self.__done_cb)
         model.zoom_level_changed.connect(self.__zoom_cb)
 
+    def unbind_done_listeners(self):
+        model = shell.get_model()
+        model.disconnect_by_func(self.__done_cb)
+        model.zoom_level_changed.disconnect(self.__zoom_cb)
+
     def __zoom_cb(self, **kwargs):
         model = shell.get_model()
         if model.zoom_level == shell.ShellModel.ZOOM_ACTIVITY and \
            model.get_active_activity().is_journal():
-            self._done()
+            self.done_signal.emit()
 
     def __done_cb(self, model, activity):
         if activity.is_journal():
-            self._done()
-
-    def _done(self):
-        model = shell.get_model()
-        self.done_signal.emit()
-        model.disconnect_by_func(self.__done_cb)
-        model.zoom_level_changed.disconnect(self.__zoom_cb)
+            self.done_signal.emit()
 
 
 class JournalDetailsStep(Step):
@@ -308,12 +352,15 @@ class JournalDetailsStep(Step):
         return 'journal_main_view', HotspotScale.NORMAL
 
     def bind_done_listeners(self):
-        widget = get_widget_registry().get('journal_list_view')
-        widget.connect('detail-clicked', self.__done_cb)
+        self._widget = get_widget_registry().get('journal_list_view')
+        self._widget.connect('detail-clicked', self.__done_cb)
+
+    def unbind_done_listeners(self):
+        self._widget.disconnect_by_func(self.__done_cb)
+        del self._widget
 
     def __done_cb(self, tree, obj):
         self.done_signal.emit()
-        tree.disconnect_by_func(self.__done_cb)
 
 
 class LaunchHelpStep(Step):
@@ -324,10 +371,13 @@ class LaunchHelpStep(Step):
         model = shell.get_model()
         model.connect('launch-started', self.__launch_started_cb)
 
+    def unbind_done_listeners(self):
+        model = shell.get_model()
+        model.disconnect_by_func(self.__launch_started_cb)
+
     def __launch_started_cb(self, model, activity):
         if activity.get_bundle_id() == 'org.laptop.HelpActivity':
             self.done_signal.emit()
-            model.disconnect_by_func(self.__launch_started_cb)
 
 
 class OwnerIconStep(Step):
@@ -336,8 +386,18 @@ class OwnerIconStep(Step):
 
     def bind_done_listeners(self):
         widget = get_widget_registry().get('owner_icon')
-        invoker = widget.props.palette_invoker
-        invoker.connect('popup', self.__popup_cb)
+        self._invoker = widget.props.palette_invoker
+        self._invoker.connect('popup', self.__popup_cb)
+
+    def unbind_done_listeners(self):
+        self._invoker.disconnect_by_func(self.__popup_cb)
+        if self._invoker.props.palette is not None:
+            try:
+                self._invoker.props.palette.disconnect_by_func(
+                    self.__secondary_popup_cb)
+            except TypeError:
+                pass  # Not bound
+        del self._invoker
 
     def __popup_cb(self, invoker):
         invoker.props.palette.connect(
@@ -345,8 +405,6 @@ class OwnerIconStep(Step):
 
     def __secondary_popup_cb(self, palette, invoker):
         self.done_signal.emit()
-        palette.diconnect_by_func(self.__secondary_popup_cb)
-        invoker.disconnect_by_func(self.__popup_cb)
 
 
 INITIAL_STEPS = [0]
