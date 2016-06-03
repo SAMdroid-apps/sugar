@@ -18,29 +18,38 @@
 import logging
 from gettext import gettext as _
 import uuid
+import json
+import time
 
 from gi.repository import Gtk
 from gi.repository import Gdk
 from gi.repository import GdkX11
+from gi.repository import Gio
 import dbus
 import statvfs
 import os
 
 from sugar3.graphics.alert import ErrorAlert
+from sugar3.graphics import iconentry
 
 from sugar3 import env
+from sugar3.datastore import datastore
 from sugar3.activity import activityfactory
+from sugar3.graphics.toolbutton import ToolButton
 from gi.repository import SugarExt
 
 from jarabe.journal.journaltoolbox import MainToolbox
 from jarabe.journal.journaltoolbox import DetailToolbox
 from jarabe.journal.journaltoolbox import EditToolbox
+from jarabe.journal.projectview import ProjectView
+
 
 from jarabe.journal.listview import ListView
 from jarabe.journal.detailview import DetailView
 from jarabe.journal.volumestoolbar import VolumesToolbar
 from jarabe.journal import misc
 from jarabe.journal.objectchooser import ObjectChooser
+from jarabe.desktop.activitychooser import ActivityChooser
 from jarabe.journal.modalalert import ModalAlert
 from jarabe.journal import model
 from jarabe.journal.journalwindow import JournalWindow
@@ -55,7 +64,7 @@ J_DBUS_PATH = '/org/laptop/Journal'
 
 _SPACE_TRESHOLD = 52428800
 _BUNDLE_ID = 'org.laptop.JournalActivity'
-
+SCOPE_PRIVATE = 'private'
 _journal = None
 
 
@@ -182,6 +191,7 @@ class JournalActivity(JournalWindow):
         self.set_title(_('Journal'))
 
         self._main_view = None
+        self._project_view = None
         self._secondary_view = None
         self._list_view = None
         self._detail_view = None
@@ -190,11 +200,12 @@ class JournalActivity(JournalWindow):
         self._volumes_toolbar = None
         self._mount_point = '/'
         self._main_view_active = True
-
+        self.project_metadata = None
         self._editing_mode = False
 
         self._setup_main_view()
         self._setup_secondary_view()
+        self._setup_project_view()
 
         self.add_events(Gdk.EventMask.ALL_EVENTS_MASK)
         self._realized_sid = self.connect('realize', self.__realize_cb)
@@ -240,12 +251,43 @@ class JournalActivity(JournalWindow):
     def can_close(self):
         return False
 
-    def _setup_main_view(self):
-        self._main_toolbox = MainToolbox()
-        self._edit_toolbox = EditToolbox(self)
-        self._main_view = Gtk.VBox()
-        self._main_view.set_can_focus(True)
+    def _create_add_new_entry(self):
+        self._add_new_box = Gtk.Box(orientation = Gtk.Orientation.HORIZONTAL)
+        add_new_button = ToolButton('list-add') # suggest icon for this
+        add_new_button.set_tooltip(_('Add New'))
+        add_new_button.connect('clicked', self._add_new_button_clicked_cb)
+        self._add_new_box.pack_start(add_new_button, False, True, 0)
+        add_new_button.show()
 
+        self._entry = iconentry.IconEntry()
+        self._entry.set_icon_from_name(iconentry.ICON_ENTRY_PRIMARY,
+                                             'activity-journal')
+        text = _('Add new entry')
+        self._entry.set_placeholder_text(text)
+        self._entry.add_clear_button()
+        self._add_new_box.pack_start(self._entry, True, True, 0)
+        self._entry.show()
+        return self._add_new_box
+
+    def _create_add_new_entry_project(self):
+        hbox = Gtk.Box(orientation = Gtk.Orientation.HORIZONTAL)
+        add_new_button = ToolButton('list-add') # suggest icon for this
+        add_new_button.set_tooltip(_('Add New'))
+        add_new_button.connect('clicked', self._add_new_button_clicked_cb)
+        hbox.pack_start(add_new_button, False, True, 0)
+        add_new_button.show()
+
+        self._entry_project = iconentry.IconEntry()
+        self._entry_project.set_icon_from_name(iconentry.ICON_ENTRY_PRIMARY,
+                                             'activity-journal')
+        text = _('Add new entry')
+        self._entry_project.set_placeholder_text(text)
+        self._entry_project.add_clear_button()
+        hbox.pack_start(self._entry_project, True, True, 0)
+        self._entry_project.show()
+        return hbox
+
+    def _create_list_view(self):
         self._list_view = ListView(self, enable_multi_operations=True)
         self._list_view.connect('detail-clicked', self.__detail_clicked_cb)
         self._list_view.connect('clear-clicked', self.__clear_clicked_cb)
@@ -256,19 +298,88 @@ class JournalActivity(JournalWindow):
                                 self.__title_edit_finished_cb)
         self._list_view.connect('selection-changed',
                                 self.__selection_changed_cb)
-        self._main_view.pack_start(self._list_view, True, True, 0)
-        self._list_view.show()
+        self._list_view.connect('project-view-activate',
+                                self.__project_view_activated_cb)
+        return self._list_view
 
+
+    def _create_list_view_project(self):
+        self._list_view_project = ListView(self, enable_multi_operations=True)
+        self._list_view_project.connect('detail-clicked', self.__detail_clicked_cb)
+        self._list_view_project.connect('clear-clicked', self.__clear_clicked_cb)
+        self._list_view_project.connect('volume-error', self.volume_error_cb)
+        self._list_view_project.connect('title-edit-started',
+                                self.__title_edit_started_cb)
+        self._list_view_project.connect('title-edit-finished',
+                                self.__title_edit_finished_cb)
+        self._list_view_project.connect('selection-changed',
+                                self.__selection_changed_cb)
+        self._list_view_project.connect('project-view-activate',
+                                self.__project_view_activated_cb)
+        return self._list_view_project
+
+    def _create_volumes_toolbar(self):
         self._volumes_toolbar = VolumesToolbar()
         self._volumes_toolbar.connect('volume-changed',
                                       self.__volume_changed_cb)
         self._volumes_toolbar.connect('volume-error', self.volume_error_cb)
-        self._main_view.pack_start(self._volumes_toolbar, False, True, 0)
+        return self._volumes_toolbar
+
+    def _setup_main_view(self):
+        self._main_toolbox = MainToolbox()
+        self._edit_toolbox = EditToolbox(self)
+        self._main_view = Gtk.VBox()
+
+        add_new_box = self._create_add_new_entry()
+        add_new_box.show_all()
+        self._main_view.pack_start(add_new_box, False, True, 0)
+        self._main_view.set_can_focus(True)
+
+        list_view = self._create_list_view()
+        self._main_view.pack_start(list_view, True, True, 0)
+        list_view.show_all()
+
+        volumes_toolbar = self._create_volumes_toolbar()
+        self._main_view.pack_start(volumes_toolbar, False, True, 0)
 
         self._main_toolbox.connect('query-changed', self._query_changed_cb)
+
         self._main_toolbox.search_entry.connect('icon-press',
                                                 self.__search_icon_pressed_cb)
         self._main_toolbox.set_mount_point(self._mount_point)
+
+    def _setup_project_view(self):
+        self._project_view = ProjectView()
+        add_new_box = self._create_add_new_entry_project()
+        add_new_box.show_all()
+        self._project_view.pack_start(add_new_box, False, True, 0)
+        list_view = self._create_list_view_project()
+        self._project_view.pack_start(list_view, True, True, 0)
+        list_view.show()
+        
+    def get_list_view(self):
+        return self._list_view
+
+    def get_entry(self):
+        return self._entry
+
+    def __project_view_activated_cb(self, list_view, metadata):
+        self.project_metadata = metadata
+        self._main_view_active = False
+        self.get_list_view().set_projects_view_active(False)
+        self._project_view._project_buddies(metadata)
+        logging.debug('project_view_activate signal handler')
+        self.set_canvas(self._project_view)
+        self._toolbox = self._main_toolbox
+        self.set_toolbar_box(self._toolbox)
+        self._toolbox.show()
+
+        query = {}
+        query['project_id'] = self.project_metadata['uid']
+        query['mountpoints'] = ['/']
+        logging.debug('[GSoC]__project_view_activated_cb %r' %query)
+        self._list_view_project.update_with_query(query)
+        self._project_view.show_all()
 
     def _setup_secondary_view(self):
         self._secondary_view = Gtk.VBox()
@@ -281,9 +392,87 @@ class JournalActivity(JournalWindow):
         self._secondary_view.pack_end(self._detail_view, True, True, 0)
         self._detail_view.show()
 
+    def _add_new_button_clicked_cb(self, button):
+        # This method only implements Add-New-Project
+        # TODO: Add-New-Entry for other activities
+        if self.get_list_view().get_projects_view_active():
+            logging.debug('[GSoC]for project title %r' %self.get_entry().props.text)
+            self._initialize_journal_object()
+        elif self.project_metadata is not None:
+            logging.debug('[GSoC]ObjectChooser here...')
+            chooser = ActivityChooser()
+            chooser.connect('activity-selected',self.__activity_selected_cb)
+            chooser.show_all()
+
+    def __activity_selected_cb(self, widget, bundle_id, activity_id):
+        logging.debug('[GSoC]__activity_selectetd_cb')
+        self._initialize_journal_object(bundle_id=bundle_id, activity_id=activity_id)
+
+    def _initialize_journal_object(self, title=None, bundle_id=None, activity_id=None):
+        if self.get_list_view().get_projects_view_active():
+            title = _(self.get_entry().props.text)
+            logging.debug('[GSoC]initializing journal object for project %r' %title)
+            settings = Gio.Settings('org.sugarlabs.user')
+            icon_color = settings.get_string('color')
+
+            jobject = datastore.create()
+            jobject.metadata['title'] = title
+            jobject.metadata['title_set_by_user'] = '0'
+            jobject.metadata['activity'] = 'Project'
+
+            # TODO: Implement activity_id for projects
+            #jobject.metadata['activity_id'] = self.get_id()
+
+            jobject.metadata['keep'] = '0'
+            jobject.metadata['preview'] = ''
+            #jobject.metadata['share-scope'] = SCOPE_PRIVATE
+            jobject.metadata['icon-color'] = icon_color
+            #jobject.metadata['launch-times'] = str(int(time.time()))
+            #jobject.metadata['spent-times'] = '0'
+
+            jobject.file_path = ''
+
+            # FIXME: We should be able to get an ID synchronously from the DS,
+            # then call async the actual create.
+            # http://bugs.sugarlabs.org/ticket/2169
+            datastore.write(jobject)
+
+            # TODO: list of handle.object_id for every entry to be implemented
+            # Let the list contains first object_id of project itself
+            jobject.metadata['objects']= [jobject.object_id]
+            model.write(jobject.metadata)
+            return jobject
+
+        elif self.project_metadata is not None:
+            title = _(self._entry_project.props.text)
+            logging.debug('[GSoC]_initialize_journal_object')
+            settings = Gio.Settings('org.sugarlabs.user')
+            icon_color = settings.get_string('color')
+
+            jobject = datastore.create()
+            jobject.metadata['title'] = title
+            jobject.metadata['title_set_by_user'] = '0'
+            jobject.metadata['activity'] = bundle_id
+            jobject.metadata['activity_id'] = activity_id
+            jobject.metadata['keep'] = '0'
+            jobject.metadata['preview'] = ''
+            jobject.metadata['share-scope'] = SCOPE_PRIVATE
+            jobject.metadata['icon-color'] = icon_color
+            jobject.metadata['launch-times'] = str(int(time.time()))
+            jobject.metadata['spent-times'] = '0'
+            jobject.file_path = ''
+            jobject.metadata['project_id'] = self.project_metadata['uid']
+            # FIXME: We should be able to get an ID synchronously from the DS,
+            # then call async the actual create.
+            # http://bugs.sugarlabs.org/ticket/2169
+            datastore.write(jobject)
+
+            return jobject
+
+
     def _key_press_event_cb(self, widget, event):
-        if not self._main_toolbox.search_entry.has_focus():
-            self._main_toolbox.search_entry.grab_focus()
+        #if not self._main_toolbox.search_entry.has_focus():
+        #self._main_toolbox.search_entry.grab_focus()
 
         keyname = Gdk.keyval_name(event.keyval)
         if keyname == 'Escape':
@@ -325,6 +514,7 @@ class JournalActivity(JournalWindow):
 
     def show_main_view(self):
         self._main_view_active = True
+        self.project_metadata = None
         if self._editing_mode:
             self._toolbox = self._edit_toolbox
             self._toolbox.set_total_number_of_entries(
@@ -489,3 +679,4 @@ def get_journal():
 
 def start():
     get_journal()
+
