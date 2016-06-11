@@ -53,14 +53,8 @@ class FriendListPopup(PopWindow):
         self.view.show()
         self.show()
 
-        ok_button = ToolButton(icon_name='document-send')
-        self.get_title_box().add_widget(ok_button, False, -1)
-        ok_button.connect('clicked', self.__send_clicked_cb)
-        ok_button.show()
-
-    def __send_clicked_cb(self, button):
+    def do_destroy(self):
         logging.debug('[GSoC]frind-selected')
         model = self.view.get_model()
         selected = model.get_selected()
         self.emit('friend-selected', selected)
-        self.destroy()
