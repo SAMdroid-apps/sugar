@@ -68,7 +68,8 @@ class ProjectView(Gtk.VBox):
         if not self.project_metadata.get('buddies'):
             self.project_metadata['buddies'] = []
         for buddy in selected:
-            self.project_metadata['buddies'].append((buddy.props.nick, buddy.props.color))
+            self.project_metadata['buddies'].append(
+                (buddy.props.nick, buddy.props.color.to_string()))
 
         #service = self.get_service()
 
