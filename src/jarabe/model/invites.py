@@ -37,6 +37,7 @@ from jarabe.model import bundleregistry
 from jarabe.model import neighborhood
 from jarabe.journal import misc
 from jarabe.journal import journalactivity
+from jarabe.journal.projectwrapper import get_project_collab
 
 
 CONNECTION_INTERFACE_ACTIVITY_PROPERTIES = \
@@ -67,13 +68,9 @@ class BaseInvite(object):
         bus = dbus.Bus()
         obj = bus.get_object(CHANNEL_DISPATCHER, self.dispatch_operation_path)
         dispatch_operation = dbus.Interface(obj, CHANNEL_DISPATCH_OPERATION)
-        logging.debug('BaseInvite._call_handle_with self._handler %r self._handle' %[self._handler, self._handle])
-        if self._handler ==  'org.freedesktop.Telepathy.Client.org.sugarlabs.Project':
-            dispatch_operation.Claim()
-        else:
-            dispatch_operation.HandleWith(self._handler,
-                                      reply_handler=self._handle_with_reply_cb,
-                                      error_handler=self._handle_with_reply_cb)
+        dispatch_operation.HandleWith(self._handler,
+                                  reply_handler=self._handle_with_reply_cb,
+                                  error_handler=self._handle_with_reply_cb)
 
     def _handle_with_reply_cb(self, error=None):
         if error is not None:
@@ -134,57 +131,29 @@ class ActivityInvite(BaseInvite):
 
 
 class ProjectInvite(BaseInvite):
-    """Invitation to a shared project."""
-    def __init__(self, dispatch_operation_path, handle, handler,
-                 project_properties):
+    def __init__(self, dispatch_operation_path, handle, channel_path,
+                 handler, props):
         BaseInvite.__init__(self, dispatch_operation_path, handle, handler)
-        if project_properties is not None:
-            self._project_properties = project_properties
-            logging.debug('Properties recieved! %r'%project_properties.get('objects',None))
-        else:
-            self._project_properties = None
+        self._handle = handle
+        self._channel_path = channel_path
+        self._metadata = json.loads(str(props['name']))
 
     def get_color(self):
-        color = self._project_properties.get('color', None)
-        # arrives unicode but we connect with byte_arrays=True - SL #4157
-        if color is not None:
-            color = str(color)
-        return XoColor(color)
+        return XoColor(self._metadata['icon-color'])
+
+    def get_activity_title(self):
+        return self._metadata['title']
 
     def join(self):
-        logging.error('[GSoC]ProjectInvite.join handler start %r', self._handler)
-        registry = bundleregistry.get_registry()
-        bundle_id = self.get_bundle_id()
-        #bundle = registry.get_bundle(bundle_id)
-        objects_received = self._project_properties.get('objects', None)
-        list_of_objects = None
-        if objects_received:
-            id_str = json.loads(objects_received).values()
-            list_of_objects = ast.literal_eval(id_str[0].decode().encode())
-            logging.debug('id_str %r' %list_of_objects)
-        
-        logging.debug('[GSoC]ProjectInvite.join running %r' %self.dispatch_operation_path)
-        self._call_handle_with()
-        logging.debug('[GSoC] ProjectInvite.join prop%r'%self._project_properties )
-        title = self._project_properties.get('name',None)
-        activity_id = self._project_properties.get('activity_id',None)
-        logging.debug('[GSoC] ProjectInvite.join prop%r'%title )
-        jobject = journalactivity.initialize_journal_object(title=title,
-                                                bundle_id=bundle_id,
-                                                activity_id=activity_id,
-                                                invited=True,)
+        bus = dbus.Bus()
+        obj = bus.get_object(CHANNEL_DISPATCHER, self.dispatch_operation_path)
+        dispatch_operation = dbus.Interface(obj, CHANNEL_DISPATCH_OPERATION)
+        dispatch_operation.Claim()
+        print('JUST CLAIMED:', self._handle, self._channel_path)
+        p = get_project_collab(self._metadata['activity_id'],
+                               self._metadata['uid'])
+        p.take_handle(self._handle, self._channel_path)
 
-        list_of_objects = list_of_objects[1:]
-        for obj in list_of_objects:
-            logging.debug('obj %r' %obj)
-            activity_id, bundle_id, title = obj
-            if bundle_id is not PROJECT_BUNDLE_ID:
-                logging.debug('title %r bundle_id %r'%(title, bundle_id))
-                journalactivity.initialize_journal_object(title=title,
-                                                bundle_id=bundle_id,
-                                                activity_id=activity_id,
-                                                project_metadata=jobject.metadata,
-                                                invited=True)
 
 class PrivateInvite(BaseInvite):
 
@@ -252,6 +221,7 @@ class Invites(GObject.GObject):
                 dbus_interface=CONNECTION_INTERFACE_ACTIVITY_PROPERTIES,
                 reply_handler=partial(self.__get_properties_cb,
                                       handle,
+                                      channel_path,
                                       dispatch_operation_path),
                 error_handler=partial(self.__error_handler_cb,
                                       handle,
@@ -266,14 +236,12 @@ class Invites(GObject.GObject):
                                                 channel_path,
                                                 properties)
 
-    def __get_properties_cb(self, handle, dispatch_operation_path, properties):
+    def __get_properties_cb(self, handle, channel_path,
+                            dispatch_operation_path, properties):
         logging.debug('__get_properties_cb %r', properties)
         handler = '%s.%s' % (CLIENT, properties['type'])
-        objects_received = properties.get('objects', None)
-        if objects_received:
-            id_str = json.loads(objects_received).values()
-            logging.debug('id_str %r' %ast.literal_eval(id_str[0].decode().encode()))
-        self._add_invite(dispatch_operation_path, handle, handler, properties)
+        self._add_invite(dispatch_operation_path, handle, handler, properties,
+                         channel_path=channel_path)
 
     def __error_handler_cb(self, handle, channel_properties,
                            dispatch_operation_path, channel_path,
@@ -325,7 +293,7 @@ class Invites(GObject.GObject):
             logging.debug('__handle_with_reply_cb')
 
     def _add_invite(self, dispatch_operation_path, handle, handler,
-                    activity_properties=None):
+                    activity_properties=None, channel_path=None):
         logging.debug('_add_invite %r %r %r', dispatch_operation_path, handle,
                       handler)
         if dispatch_operation_path in self._dispatch_operations:
@@ -334,14 +302,13 @@ class Invites(GObject.GObject):
             return
 
         if activity_properties:
-            if activity_properties.get('type', None) == PROJECT_BUNDLE_ID:
-                project_properties = activity_properties
-                invite = ProjectInvite(dispatch_operation_path, handle, handler,
-                                project_properties)
+            if activity_properties.get('type') == PROJECT_BUNDLE_ID:
+                invite = ProjectInvite(dispatch_operation_path, handle,
+                                       channel_path, handler,
+                                       activity_properties)
             else:
-                invite = ActivityInvite(dispatch_operation_path, handle, handler,
-                                activity_properties)
-        logging.debug('[GSoC]_add_invite %r' %invite)
+                invite = ActivityInvite(dispatch_operation_path, handle,
+                                        handler, activity_properties)
         self._dispatch_operations[dispatch_operation_path] = invite
         self.emit('invite-added', invite)
 

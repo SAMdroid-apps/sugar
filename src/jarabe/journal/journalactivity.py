@@ -38,8 +38,6 @@ from sugar3.activity import activityfactory
 from sugar3.graphics.toolbutton import ToolButton
 from gi.repository import SugarExt
 
-from jarabe.model.project import Project
-
 from jarabe.journal.journaltoolbox import MainToolbox
 from jarabe.journal.journaltoolbox import DetailToolbox
 from jarabe.journal.journaltoolbox import EditToolbox
@@ -369,8 +367,6 @@ class JournalActivity(JournalWindow):
 
     def __project_view_activated_cb(self, list_view, metadata):
         self.project_metadata = metadata
-        project  = Project(self.project_metadata)
-        self._project_view.set_project(project)
 
         self._main_view_active = False
         self.get_list_view().set_projects_view_active(False)

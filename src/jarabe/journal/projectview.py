@@ -25,6 +25,7 @@ from gi.repository import Gtk
 from jarabe.view.friendlistpopup import FriendListPopup
 from jarabe.journal.expandedentry import TextView, BuddyList 
 from jarabe.journal.listview import ListView
+from jarabe.journal.projectwrapper import get_project_collab
 
 from sugar3.graphics import style
 from sugar3.graphics.toolbutton import ToolButton
@@ -39,8 +40,6 @@ class ProjectView(Gtk.VBox):
     	self.project_metadata = None
         self._service = None
         self._activity_id = None
-        self._project = None
-
     	Gtk.VBox.__init__(self)
         description_box, self._description = self._create_description()
         
@@ -54,16 +53,12 @@ class ProjectView(Gtk.VBox):
         self.pack_start(hbox, False, True, 0)
         hbox.show()
 
-    def set_project(self, project):
-        self._project = project
-
     def _add_buddy_button_clicked_cb(self, button):
         logging.debug('[GSoC]_add_buddy_button_clicked_cb')
         pop_up = FriendListPopup()
         pop_up.connect('friend-selected', self.__friend_selected_cb)
 
     def __friend_selected_cb(self, xyz, selected):
-        logging.debug('[GSoC]__friend_selected_cb %r' %selected)
         buddies = []
         if not self.project_metadata.get('buddies'):
             self.project_metadata['buddies'] = []
@@ -71,31 +66,12 @@ class ProjectView(Gtk.VBox):
             self.project_metadata['buddies'].append(
                 (buddy.props.nick, buddy.props.color.to_string()))
 
-        #service = self.get_service()
-
-        #if service:
-            #try:
-        self.invite_buddy(selected)
-        '''    except dbus.DBusException, e:
-                expected_exceptions = [
-                    'org.freedesktop.DBus.Error.UnknownMethod',
-                    'org.freedesktop.DBus.Python.NotImplementedError']
-                if e.get_dbus_name() in expected_exceptions:
-                    logging.warning('Trying deprecated Activity.Invite')
-                    service.Invite(selected[0].props.key)
-                else:
-                    raise
-        else:
-            logging.error('Invite failed, activity service not ')
-        #datastore._update_ds_entry(self.project_metadata['uid'])
-        #model.write(self.project_metadata['uid'])'''
+        self._get_collab().invite(selected)
         self._project_buddies(self.project_metadata)
-        logging.debug('[GSoC]friend finally selected')
 
-    def invite_buddy(self, selected):
-        logging.debug('[GSoC]ProjectView.invite_buddy')
-        self._project.invite(selected[0].props.account,selected[0].props.contact_id)
-
+    def _get_collab(self):
+        return get_project_collab(self.project_metadata['activity_id'],
+                                  object_id=self.project_metadata['uid'])
 
     def _project_buddies(self, metadata):
         logging.debug('[GSoC]_project_buddies')
