@@ -404,10 +404,12 @@ class JournalActivity(JournalWindow):
             chooser.show_all()
 
     def __activity_selected_cb(self, widget, bundle_id, activity_id):
-        initialize_journal_object(title = self._entry_project.props.text,
-                                        bundle_id=bundle_id, 
-                                        activity_id=activity_id,
-                                        project_metadata=self.project_metadata)
+        jobject = initialize_journal_object(
+            title=self._entry_project.props.text,
+            bundle_id=bundle_id,
+            activity_id=activity_id,
+            project_metadata=self.project_metadata)
+        misc.resume(jobject.metadata, alert_window=self)
 
     def __key_press_event_cb(self, widget, event):
         #if not self._main_toolbox.search_entry.has_focus():
