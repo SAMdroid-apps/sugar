@@ -84,6 +84,7 @@ class MainToolbox(ToolbarBox):
         self._filter_type = default_filter_type
         self._what_filter = default_what_filter
         self._when_filter = None
+        
         self._default_what_filter = default_what_filter
         self._default_filter_type = default_filter_type
 
@@ -105,13 +106,20 @@ class MainToolbox(ToolbarBox):
         self.toolbar.insert(self._favorite_button, -1)
         self._favorite_button.show()
 
-        self._what_widget_contents = None
-        self._what_widget = Gtk.ToolItem()
-        self._what_search_button = FilterToolItem(
-            'view-type', _('Anything'), self._what_widget)
-        self._what_widget.show()
-        self.toolbar.insert(self._what_search_button, -1)
-        self._what_search_button.show()
+        self._proj_list_button = ToggleToolButton('project-box')
+        self._proj_list_button.set_tooltip(_('Projects'))
+        self._proj_list_button.connect('toggled', self._proj_list_button_clicked_cb)
+        self.toolbar.insert(self._proj_list_button, -1)
+        self._proj_list_button.show()
+
+        if not self._proj_list_button.props.active:
+            self._what_widget_contents = None
+            self._what_widget = Gtk.ToolItem()
+            self._what_search_button = FilterToolItem(
+                'view-type', _('Anything'), self._what_widget)
+            self._what_widget.show()
+            self.toolbar.insert(self._what_search_button, -1)
+            self._what_search_button.show()
 
         self._when_search_button = FilterToolItem(
             'view-created', _('Anytime'), self._get_when_search_items())
@@ -230,7 +238,10 @@ class MainToolbox(ToolbarBox):
         if self._favorite_button.props.active:
             query['keep'] = 1
 
-        if self._what_filter:
+        if self._proj_list_button.props.active:
+            query['activity'] = 'org.sugarlabs.Project'
+
+        elif self._what_filter:
             filter_type = self._filter_type
             value = self._what_filter
 
@@ -460,6 +471,15 @@ class MainToolbox(ToolbarBox):
             self._what_widget.add(self._what_widget_contents)
             self._what_widget_contents.show()
 
+    def _proj_list_button_clicked_cb(self, proj_list_button):
+        if self._proj_list_button.props.active:
+            self._what_widget.hide()
+            self._what_search_button.hide()
+        else:
+            self._what_widget.show()
+            self._what_search_button.show()
+        self._update_if_needed()
+
     def __favorite_button_toggled_cb(self, favorite_button):
         self._update_if_needed()
 
@@ -489,6 +509,11 @@ class MainToolbox(ToolbarBox):
         '''
 
         self._favorite_button.props.active = False
+
+        if self._proj_list_button.props.active:
+            self._what_widget.show()
+            self._what_search_button.show()
+            self._proj_list_button.props.active = False
 
         self._update_if_needed()
 
